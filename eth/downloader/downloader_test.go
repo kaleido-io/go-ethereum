@@ -39,7 +39,7 @@ import (
 func init() {
 	fullMaxForkAncestry = 10000
 	lightMaxForkAncestry = 10000
-	blockCacheItems = 1024
+	blockCacheMaxItems = 1024
 	fsHeaderContCheck = 500 * time.Millisecond
 }
 
@@ -341,25 +341,52 @@ func (dl *downloadTester) InsertReceiptChain(blocks types.Blocks, receipts []typ
 	return len(blocks), nil
 }
 
-// Rollback removes some recently added elements from the chain.
-func (dl *downloadTester) Rollback(hashes []common.Hash) {
+// SetHead rewinds the local chain to a new head.
+func (dl *downloadTester) SetHead(head uint64) error {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
 
-	for i := len(hashes) - 1; i >= 0; i-- {
-		if dl.ownHashes[len(dl.ownHashes)-1] == hashes[i] {
-			dl.ownHashes = dl.ownHashes[:len(dl.ownHashes)-1]
+	// Find the hash of the head to reset to
+	var hash common.Hash
+	for h, header := range dl.ownHeaders {
+		if header.Number.Uint64() == head {
+			hash = h
 		}
-		delete(dl.ownChainTd, hashes[i])
-		delete(dl.ownHeaders, hashes[i])
-		delete(dl.ownReceipts, hashes[i])
-		delete(dl.ownBlocks, hashes[i])
-
-		delete(dl.ancientChainTd, hashes[i])
-		delete(dl.ancientHeaders, hashes[i])
-		delete(dl.ancientReceipts, hashes[i])
-		delete(dl.ancientBlocks, hashes[i])
 	}
+	for h, header := range dl.ancientHeaders {
+		if header.Number.Uint64() == head {
+			hash = h
+		}
+	}
+	if hash == (common.Hash{}) {
+		return fmt.Errorf("unknown head to set: %d", head)
+	}
+	// Find the offset in the header chain
+	var offset int
+	for o, h := range dl.ownHashes {
+		if h == hash {
+			offset = o
+			break
+		}
+	}
+	// Remove all the hashes and associated data afterwards
+	for i := offset + 1; i < len(dl.ownHashes); i++ {
+		delete(dl.ownChainTd, dl.ownHashes[i])
+		delete(dl.ownHeaders, dl.ownHashes[i])
+		delete(dl.ownReceipts, dl.ownHashes[i])
+		delete(dl.ownBlocks, dl.ownHashes[i])
+
+		delete(dl.ancientChainTd, dl.ownHashes[i])
+		delete(dl.ancientHeaders, dl.ownHashes[i])
+		delete(dl.ancientReceipts, dl.ownHashes[i])
+		delete(dl.ancientBlocks, dl.ownHashes[i])
+	}
+	dl.ownHashes = dl.ownHashes[:offset+1]
+	return nil
+}
+
+// Rollback removes some recently added elements from the chain.
+func (dl *downloadTester) Rollback(hashes []common.Hash) {
 }
 
 // newPeer registers a new block download source into the downloader.
@@ -517,7 +544,7 @@ func testCanonicalSynchronisation(t *testing.T, protocol int, mode SyncMode) {
 	defer tester.terminate()
 
 	// Create a small enough block chain to download
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 	tester.newPeer("peer", protocol, chain)
 
 	// Synchronise with the peer and make sure all relevant data was retrieved
@@ -580,8 +607,8 @@ func testThrottling(t *testing.T, protocol int, mode SyncMode) {
 			}
 			tester.lock.Unlock()
 
-			if cached == blockCacheItems ||
-				cached == blockCacheItems-reorgProtHeaderDelay ||
+			if cached == blockCacheMaxItems ||
+				cached == blockCacheMaxItems-reorgProtHeaderDelay ||
 				retrieved+cached+frozen == targetBlocks+1 ||
 				retrieved+cached+frozen == targetBlocks+1-reorgProtHeaderDelay {
 				break
@@ -592,8 +619,8 @@ func testThrottling(t *testing.T, protocol int, mode SyncMode) {
 		tester.lock.RLock()
 		retrieved = len(tester.ownBlocks)
 		tester.lock.RUnlock()
-		if cached != blockCacheItems && cached != blockCacheItems-reorgProtHeaderDelay && retrieved+cached+frozen != targetBlocks+1 && retrieved+cached+frozen != targetBlocks+1-reorgProtHeaderDelay {
-			t.Fatalf("block count mismatch: have %v, want %v (owned %v, blocked %v, target %v)", cached, blockCacheItems, retrieved, frozen, targetBlocks+1)
+		if cached != blockCacheMaxItems && cached != blockCacheMaxItems-reorgProtHeaderDelay && retrieved+cached+frozen != targetBlocks+1 && retrieved+cached+frozen != targetBlocks+1-reorgProtHeaderDelay {
+			t.Fatalf("block count mismatch: have %v, want %v (owned %v, blocked %v, target %v)", cached, blockCacheMaxItems, retrieved, frozen, targetBlocks+1)
 		}
 
 		// Permit the blocked blocks to import
@@ -846,7 +873,7 @@ func testMultiProtoSync(t *testing.T, protocol int, mode SyncMode) {
 	defer tester.terminate()
 
 	// Create a small enough block chain to download
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 
 	// Create peers of every type
 	tester.newPeer("peer 63", 63, chain)
@@ -938,7 +965,7 @@ func testMissingHeaderAttack(t *testing.T, protocol int, mode SyncMode) {
 	tester := newTester()
 	defer tester.terminate()
 
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 	brokenChain := chain.shorten(chain.len())
 	delete(brokenChain.headerm, brokenChain.chain[brokenChain.len()/2])
 	tester.newPeer("attack", protocol, brokenChain)
@@ -970,7 +997,7 @@ func testShiftedHeaderAttack(t *testing.T, protocol int, mode SyncMode) {
 	tester := newTester()
 	defer tester.terminate()
 
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 
 	// Attempt a full sync with an attacker feeding shifted headers
 	brokenChain := chain.shorten(chain.len())
@@ -993,10 +1020,9 @@ func testShiftedHeaderAttack(t *testing.T, protocol int, mode SyncMode) {
 // Tests that upon detecting an invalid header, the recent ones are rolled back
 // for various failure scenarios. Afterwards a full sync is attempted to make
 // sure no state was corrupted.
-func TestInvalidHeaderRollback63Fast(t *testing.T)  { testInvalidHeaderRollback(t, 63, FastSync) }
-func TestInvalidHeaderRollback64Fast(t *testing.T)  { testInvalidHeaderRollback(t, 64, FastSync) }
-func TestInvalidHeaderRollback65Fast(t *testing.T)  { testInvalidHeaderRollback(t, 65, FastSync) }
-func TestInvalidHeaderRollback65Light(t *testing.T) { testInvalidHeaderRollback(t, 65, LightSync) }
+func TestInvalidHeaderRollback63Fast(t *testing.T) { testInvalidHeaderRollback(t, 63, FastSync) }
+func TestInvalidHeaderRollback64Fast(t *testing.T) { testInvalidHeaderRollback(t, 64, FastSync) }
+func TestInvalidHeaderRollback65Fast(t *testing.T) { testInvalidHeaderRollback(t, 65, FastSync) }
 
 func testInvalidHeaderRollback(t *testing.T, protocol int, mode SyncMode) {
 	t.Parallel()
@@ -1175,7 +1201,7 @@ func testSyncProgress(t *testing.T, protocol int, mode SyncMode) {
 
 	tester := newTester()
 	defer tester.terminate()
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 
 	// Set a sync init hook to catch progress changes
 	starting := make(chan struct{})
@@ -1335,7 +1361,7 @@ func testFailedSyncProgress(t *testing.T, protocol int, mode SyncMode) {
 
 	tester := newTester()
 	defer tester.terminate()
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 
 	// Set a sync init hook to catch progress changes
 	starting := make(chan struct{})
@@ -1408,7 +1434,7 @@ func testFakedSyncProgress(t *testing.T, protocol int, mode SyncMode) {
 
 	tester := newTester()
 	defer tester.terminate()
-	chain := testChainBase.shorten(blockCacheItems - 15)
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 
 	// Set a sync init hook to catch progress changes
 	starting := make(chan struct{})

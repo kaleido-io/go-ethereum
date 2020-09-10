@@ -79,7 +79,6 @@ var (
 		executablePath("geth"),
 		executablePath("puppeth"),
 		executablePath("rlpdump"),
-		executablePath("wnode"),
 		executablePath("clef"),
 	}
 
@@ -110,10 +109,6 @@ var (
 			Description: "Developer utility tool that prints RLP structures.",
 		},
 		{
-			BinaryName:  "wnode",
-			Description: "Ethereum Whisper diagnostic tool",
-		},
-		{
 			BinaryName:  "clef",
 			Description: "Ethereum account management tool.",
 		},
@@ -139,13 +134,14 @@ var (
 	// Note: zesty is unsupported because it was officially deprecated on Launchpad.
 	// Note: artful is unsupported because it was officially deprecated on Launchpad.
 	// Note: cosmic is unsupported because it was officially deprecated on Launchpad.
+	// Note: disco is unsupported because it was officially deprecated on Launchpad.
 	debDistroGoBoots = map[string]string{
 		"trusty": "golang-1.11",
 		"xenial": "golang-go",
 		"bionic": "golang-go",
-		"disco":  "golang-go",
 		"eoan":   "golang-go",
 		"focal":  "golang-go",
+		"groovy": "golang-go",
 	}
 
 	debGoBootPaths = map[string]string{
