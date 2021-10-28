@@ -1,6 +1,6 @@
 module github.com/ethereum/go-ethereum
 
-go 1.13
+go 1.15
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
@@ -62,7 +62,7 @@ require (
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/net v0.0.0-20200822124328-c89045814202 // indirect
 	golang.org/x/sys v0.0.0-20200824131525-c12d262b63d8
-	golang.org/x/text v0.3.5
+	golang.org/x/text v0.3.7
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20200619000410-60c24ae608a6
