@@ -105,6 +105,7 @@ var (
 		utils.UltraLightFractionFlag,
 		utils.UltraLightOnlyAnnounceFlag,
 		utils.WhitelistFlag,
+		utils.DatabaseHandles,
 		utils.CacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,
