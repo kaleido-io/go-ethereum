@@ -95,6 +95,9 @@ func setDefaults(cfg *Config) {
 		}
 	}
 	if cfg.BaseFee == nil {
+		if cfg.ChainConfig.Clique != nil && cfg.ChainConfig.Clique.ZeroGasPrice {
+			cfg.BaseFee = big.NewInt(0)
+		}
 		cfg.BaseFee = big.NewInt(params.InitialBaseFee)
 	}
 }

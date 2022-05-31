@@ -376,6 +376,8 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 	if g.Config != nil && g.Config.IsLondon(common.Big0) {
 		if g.BaseFee != nil {
 			head.BaseFee = g.BaseFee
+		} else if g.Config.Clique != nil && g.Config.Clique.ZeroGasPrice {
+			head.BaseFee = new(big.Int).SetUint64(0)
 		} else {
 			head.BaseFee = new(big.Int).SetUint64(params.InitialBaseFee)
 		}

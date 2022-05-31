@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -241,5 +242,37 @@ func TestReadWriteGenesisAlloc(t *testing.T) {
 		if !reflect.DeepEqual(want, account) {
 			t.Fatal("Unexpected account")
 		}
+	}
+}
+
+func TestGenesisZeroBaseFee_Commit(t *testing.T) {
+	var (
+		extraVanity = 32                     // Fixed number of extra-data prefix bytes reserved for signer vanity
+		extraSeal   = crypto.SignatureLength // Fixed number of extra-data suffix bytes reserved for signer seal
+	)
+
+	genesis := &Genesis{
+		Config:    params.AllCliqueProtocolChanges,
+		ExtraData: make([]byte, extraVanity+common.AddressLength+extraSeal),
+		// difficulty is nil
+	}
+	genesis.Config.Clique.ZeroGasPrice = true
+
+	db := rawdb.NewMemoryDatabase()
+	genesisBlock, err := genesis.Commit(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// This value should have been set as default in the ToBlock method.
+	if genesisBlock.BaseFee().Cmp(big.NewInt(0)) != 0 {
+		t.Errorf("assumption wrong: non zero base fee")
+	}
+
+	// Check the baseFee in the stored the genesis block.
+	stored := rawdb.ReadHeader(db, genesisBlock.Hash(), genesisBlock.NumberU64())
+
+	if stored.BaseFee.Cmp(genesisBlock.BaseFee()) != 0 {
+		t.Errorf("inequal difficulty; stored: %v, genesisBlock: %v", stored.BaseFee, genesisBlock.BaseFee())
 	}
 }
