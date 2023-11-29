@@ -115,7 +115,6 @@ func (mc *mockPendingCaller) PendingCallContract(ctx context.Context, call ether
 }
 
 func TestPassingBlockNumber(t *testing.T) {
-
 	mc := &mockPendingCaller{
 		mockCaller: &mockCaller{
 			codeAtBytes: []byte{1, 2, 3},
@@ -185,6 +184,23 @@ func TestUnpackIndexedStringTyLogIntoMap(t *testing.T) {
 		"memo":   []byte{88},
 	}
 	unpackAndCheck(t, bc, expectedReceivedMap, mockLog)
+}
+
+func TestUnpackAnonymousLogIntoMap(t *testing.T) {
+	mockLog := newMockLog(nil, common.HexToHash("0x0"))
+
+	abiString := `[{"anonymous":false,"inputs":[{"indexed":false,"name":"amount","type":"uint256"}],"name":"received","type":"event"}]`
+	parsedAbi, _ := abi.JSON(strings.NewReader(abiString))
+	bc := bind.NewBoundContract(common.HexToAddress("0x0"), parsedAbi, nil, nil, nil)
+
+	var received map[string]interface{}
+	err := bc.UnpackLogIntoMap(received, "received", mockLog)
+	if err == nil {
+		t.Error("unpacking anonymous event is not supported")
+	}
+	if err.Error() != "no event signature" {
+		t.Errorf("expected error 'no event signature', got '%s'", err)
+	}
 }
 
 func TestUnpackIndexedSliceTyLogIntoMap(t *testing.T) {
