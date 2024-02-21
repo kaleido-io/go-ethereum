@@ -129,12 +129,13 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 	}
 
 	// Load config file.
-	log.Info(fmt.Sprintf("Checking for config file: %v", configFileFlag.Name))
+	log.Info(fmt.Sprintf("Checking for config file"))
 	if file := ctx.String(configFileFlag.Name); file != "" {
+		log.Info(fmt.Sprintf("Checking for config file to load: %v", file))
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
-		log.Info(fmt.Sprintf("Loaded config file: %v", configFileFlag.Name))
+		log.Info(fmt.Sprintf("Loaded config file: %v", file))
 	} else {
 		log.Info(fmt.Sprintf("No config file specified"))
 	}
