@@ -1383,6 +1383,7 @@ func MakePasswordList(ctx *cli.Context) []string {
 }
 
 func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
+	log.Trace(fmt.Sprintf("Setting P2P Config: %+v", cfg))
 	setNodeKey(ctx, cfg)
 	setNAT(ctx, cfg)
 	setListenAddress(ctx, cfg)
@@ -1453,10 +1454,12 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 		cfg.NoDiscovery = true
 		cfg.DiscoveryV5 = false
 	}
+	log.Trace(fmt.Sprintf("Done setting P2P config: %+v", cfg))
 }
 
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
+	log.Trace(fmt.Sprintf("Setting Node Config: %+v", cfg))
 	SetP2PConfig(ctx, &cfg.P2P)
 	setIPC(ctx, cfg)
 	setHTTP(ctx, cfg)
@@ -1504,6 +1507,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 		log.Info(fmt.Sprintf("Using %s as db engine", dbEngine))
 		cfg.DBEngine = dbEngine
 	}
+	log.Trace(fmt.Sprintf("Done setting Node config: %+v", cfg))
 }
 
 func setSmartCard(ctx *cli.Context, cfg *node.Config) {
@@ -1968,6 +1972,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			SetDNSDiscoveryDefaults(cfg, params.MainnetGenesisHash)
 		}
 	}
+	log.Trace(fmt.Sprintf("Done setting Eth config: %+v", cfg))
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if
