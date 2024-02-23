@@ -100,10 +100,12 @@ func loadConfig(file string, cfg *gethConfig) error {
 	}
 	defer f.Close()
 
+	log.Trace(fmt.Sprintf("Printing config file contents"))
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		log.Trace(fmt.Sprintf("line: %s\n", scanner.Text()))
+		log.Trace(fmt.Sprintf("%s", scanner.Text()))
 	}
+	log.Trace(fmt.Sprintf("Done printing config file contents"))
 
 	err = tomlSettings.NewDecoder(bufio.NewReader(f)).Decode(cfg)
 	// Add file name to errors that have a line number.
