@@ -100,6 +100,11 @@ func loadConfig(file string, cfg *gethConfig) error {
 	}
 	defer f.Close()
 
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		log.Trace(fmt.Sprintf("line: %s\n", scanner.Text()))
+	}
+
 	err = tomlSettings.NewDecoder(bufio.NewReader(f)).Decode(cfg)
 	// Add file name to errors that have a line number.
 	if _, ok := err.(*toml.LineError); ok {
