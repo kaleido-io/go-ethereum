@@ -100,8 +100,14 @@ func loadConfig(file string, cfg *gethConfig) error {
 	}
 	defer f.Close()
 
+	tracef, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer tracef.Close()
+
 	log.Trace(fmt.Sprintf("Printing config file contents"))
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(tracef)
 	for scanner.Scan() {
 		log.Trace(fmt.Sprintf("%s", scanner.Text()))
 	}
