@@ -98,7 +98,7 @@ func loadConfig(file string, cfg *gethConfig) error {
 	if err != nil {
 		return err
 	}
-	log.Trace(fmt.Sprintf("Unopened file info: %+v", fstat))
+	log.Trace(fmt.Sprintf("Unopened config file info: %+v", fstat))
 
 	f, err := os.Open(file)
 	if err != nil {
@@ -110,7 +110,7 @@ func loadConfig(file string, cfg *gethConfig) error {
 	if err != nil {
 		return err
 	}
-	log.Trace(fmt.Sprintf("Unopened file info: %+v", configStat))
+	log.Trace(fmt.Sprintf("Geth config file info: %+v", configStat))
 
 	tracef, err := os.Open(file)
 	if err != nil {
@@ -122,7 +122,7 @@ func loadConfig(file string, cfg *gethConfig) error {
 	if err != nil {
 		return err
 	}
-	log.Trace(fmt.Sprintf("Unopened file info: %+v", traceStat))
+	log.Trace(fmt.Sprintf("Trace config file info: %+v", traceStat))
 
 	log.Trace(fmt.Sprintf("Printing config file contents"))
 	scanner := bufio.NewScanner(tracef)
