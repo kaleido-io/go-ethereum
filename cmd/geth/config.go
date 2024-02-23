@@ -94,17 +94,35 @@ type gethConfig struct {
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
+	fstat, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	log.Trace(fmt.Sprintf("Unopened file info: %+v", fstat))
+
 	f, err := os.Open(file)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
+	configStat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	log.Trace(fmt.Sprintf("Unopened file info: %+v", configStat))
+
 	tracef, err := os.Open(file)
 	if err != nil {
 		return err
 	}
 	defer tracef.Close()
+
+	traceStat, err := tracef.Stat()
+	if err != nil {
+		return err
+	}
+	log.Trace(fmt.Sprintf("Unopened file info: %+v", traceStat))
 
 	log.Trace(fmt.Sprintf("Printing config file contents"))
 	scanner := bufio.NewScanner(tracef)
