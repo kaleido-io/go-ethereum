@@ -131,7 +131,7 @@ func loadConfig(file string, cfg *gethConfig) error {
 	}
 	log.Trace(fmt.Sprintf("Done printing config file contents"))
 
-	err = tomlSettings.NewDecoder(bufio.NewReader(f)).Decode(cfg)
+	err = tomlSettings.NewDecoder(bufio.NewReaderSize(f, 16 * 1024)).Decode(cfg)
 	// Add file name to errors that have a line number.
 	if _, ok := err.(*toml.LineError); ok {
 		err = errors.New(file + ", " + err.Error())
