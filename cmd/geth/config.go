@@ -107,6 +107,7 @@ func loadConfig(file string, cfg *gethConfig) error {
 				select {
 				case event, ok := <-watcher.Events:
 						if !ok {
+								log.Error("fsnotify event, not ok", "err", err)
 								return
 						}
 						log.Trace(fmt.Sprintf("fsnotify event: %+v", event))
@@ -115,8 +116,8 @@ func loadConfig(file string, cfg *gethConfig) error {
 						}
 				case err, ok := <-watcher.Errors:
 						if !ok {
-								log.Trace(fmt.Sprintf("fsnotify error not ok: %+v", err))
-								return
+							log.Error("fsnotify error, not ok", "err", err)
+							return
 						}
 						log.Trace(fmt.Sprintf("fsnotify error: %+v", err))
 				}
