@@ -134,7 +134,7 @@ func loadConfig(file string, cfg *gethConfig) error {
 	log.Trace(fmt.Sprintf("Reading entire config file into memory"))
 	whole, err := os.ReadFile(file)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("Error while reading full config file", "err", err)
 	}
 	log.Trace(fmt.Sprintf("%s", whole))
 	log.Trace(fmt.Sprintf("Done reading entire config file into memory; printed above"))
