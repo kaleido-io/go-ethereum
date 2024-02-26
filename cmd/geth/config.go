@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/urfave/cli/v2"
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -94,6 +95,41 @@ type gethConfig struct {
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
+	log.Trace(fmt.Sprintf("Setting up fsnotify watcher"))
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+			return err
+	}
+	defer watcher.Close()
+
+	go func() {
+		for {
+				select {
+				case event, ok := <-watcher.Events:
+						if !ok {
+								return
+						}
+						log.Trace(fmt.Sprintf("fsnotify event: %+v", event))
+						if event.Has(fsnotify.Write) {
+							log.Trace(fmt.Sprintf("fsnotify write event: %v", event.Name))
+						}
+				case err, ok := <-watcher.Errors:
+						if !ok {
+								log.Trace(fmt.Sprintf("fsnotify error not ok: %+v", err))
+								return
+						}
+						log.Trace(fmt.Sprintf("fsnotify error: %+v", err))
+				}
+		}
+	}()
+
+	err = watcher.Add("/qdata/ethereum")
+	if err != nil {
+		log.Trace(fmt.Sprintf("failed to add watcher to /qdata/ethereum: %+v", err))
+	}
+
+	// ------------------------
+
 	fstat, err := os.Stat(file)
 	if err != nil {
 		return err
@@ -130,6 +166,10 @@ func loadConfig(file string, cfg *gethConfig) error {
 		log.Trace(fmt.Sprintf("%s", scanner.Text()))
 	}
 	log.Trace(fmt.Sprintf("Done printing config file contents"))
+
+	if err := scanner.Err(); err != nil {
+		log.Error("Error while scanning config file", "err", err)
+	}
 
 	err = tomlSettings.NewDecoder(bufio.NewReader(f)).Decode(cfg)
 	// Add file name to errors that have a line number.
