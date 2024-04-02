@@ -125,16 +125,19 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		threshold := f.threshold.Load()
 		frozen := f.frozen.Load()
 		switch {
+		// valid block number
 		case number == nil:
 			log.Error("Current full block number unavailable", "hash", hash)
 			backoff = true
 			continue
 
+		// blocknumber greater than threshold
 		case *number < threshold:
 			log.Debug("Current full block not old enough", "number", *number, "hash", hash, "delay", threshold)
 			backoff = true
 			continue
 
+		// time for next batch of frozen
 		case *number-threshold <= frozen:
 			log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", frozen)
 			backoff = true
@@ -156,6 +159,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		if limit-first > freezerBatchLimit {
 			limit = first + freezerBatchLimit
 		}
+		log.Debug("Output Values", "Threshold", threshold, "Number", *number, "Frozen", frozen, "Limit", limit, "First", first)
 		ancients, err := f.freezeRange(nfdb, first, limit)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)

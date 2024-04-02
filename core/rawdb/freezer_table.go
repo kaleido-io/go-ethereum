@@ -886,6 +886,7 @@ func (t *freezerTable) advanceHead() error {
 // Sync pushes any pending data from memory out to disk. This is an expensive
 // operation, so use it with care.
 func (t *freezerTable) Sync() error {
+	log.Info("Syncing table")
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	if t.index == nil || t.head == nil || t.meta == nil {
@@ -897,11 +898,15 @@ func (t *freezerTable) Sync() error {
 			err = e
 		}
 	}
-	log.Info("Syncing Index. File descriptor - ", t.index.Fd())
+
+	// trackErrorWithRetry := func(f *os.File){
+
+	// }
+	log.Debug("Syncing Index.", "File descriptor - ", t.index.Fd())
 	trackError(t.index.Sync())
-	log.Info("Syncing Meta. File descriptor - ", t.index.Fd())
+	log.Debug("Syncing Meta.", "File descriptor - ", t.index.Fd())
 	trackError(t.meta.Sync())
-	log.Info("Syncing Head. File descriptor - ", t.index.Fd())
+	log.Debug("Syncing Head.", "File descriptor - ", t.index.Fd())
 	trackError(t.head.Sync())
 	return err
 }

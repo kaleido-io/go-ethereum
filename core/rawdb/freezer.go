@@ -317,6 +317,7 @@ func (f *Freezer) TruncateTail(tail uint64) error {
 func (f *Freezer) Sync() error {
 	var errs []error
 	for _, table := range f.tables {
+		log.Debug("Syncing Table", "name", table.name)
 		if err := table.Sync(); err != nil {
 			errs = append(errs, err)
 		}
