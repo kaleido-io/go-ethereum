@@ -897,9 +897,11 @@ func (t *freezerTable) Sync() error {
 			err = e
 		}
 	}
-
+	log.Info("Syncing Index. File descriptor - ", t.index.Fd())
 	trackError(t.index.Sync())
+	log.Info("Syncing Meta. File descriptor - ", t.index.Fd())
 	trackError(t.meta.Sync())
+	log.Info("Syncing Head. File descriptor - ", t.index.Fd())
 	trackError(t.head.Sync())
 	return err
 }
