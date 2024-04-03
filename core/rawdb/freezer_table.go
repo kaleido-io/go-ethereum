@@ -26,7 +26,6 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -902,31 +901,34 @@ func (t *freezerTable) Sync() error {
 	// 	}
 	// }
 
-	trackErrorWithRetry := func(f *os.File, table string) {
-		var maxRetries int = 5
-		var e error
-		for i := 0; i < maxRetries; i++ {
-			log.Debug("Trying table sync", "table", table, "retry", i)
-			e = f.Sync()
-			if e == nil {
-				break
-			}
-			// Wait for 5 seconds before retrying sync
-			time.Sleep(5 * time.Second)
-		}
-		err = e
-	}
+	// trackErrorWithRetry := func(f *os.File, table string) {
+	// 	var maxRetries int = 5
+	// 	var e error
+	// 	for i := 0; i < maxRetries; i++ {
+	// 		log.Debug("Trying table sync", "table", table, "retry", i, "descriptor", f.Fd())
+	// 		e = f.Sync()
+	// 		if e == nil {
+	// 			break
+	// 		}
+	// 		// Wait for 5 seconds before retrying sync
+	// 		time.Sleep(5 * time.Second)
+	// 	}
+	// 	err = e
+	// }
 
 	// trackErrorWithRetry(t.index.Sync())
 	// trackErrorWithRetry(t.meta.Sync())
 	// trackErrorWithRetry(t.head.Sync())
 
-	log.Debug("Syncing Index.", "File descriptor - ", t.index.Fd())
-	trackErrorWithRetry(t.index, "index")
-	log.Debug("Syncing Meta.", "File descriptor - ", t.meta.Fd())
-	trackErrorWithRetry(t.meta, "meta")
-	log.Debug("Syncing Head.", "File descriptor - ", t.head.Fd())
-	trackErrorWithRetry(t.head, "head")
+	err = trackErrorWithRetry(t.index, "index")
+	if err != nil {
+		return err
+	}
+	err = trackErrorWithRetry(t.meta, "meta")
+	if err != nil {
+		return err
+	}
+	err = trackErrorWithRetry(t.head, "head")
 	return err
 }
 

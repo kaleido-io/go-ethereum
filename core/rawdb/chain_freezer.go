@@ -159,7 +159,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		if limit-first > freezerBatchLimit {
 			limit = first + freezerBatchLimit
 		}
-		log.Debug("Output Values", "Threshold", threshold, "Number", *number, "Frozen", frozen, "Limit", limit, "First", first)
+		log.Debug("Freeze Output Values", "threshold", threshold, "number", *number, "frozen", frozen, "limit", limit, "first", first)
 		ancients, err := f.freezeRange(nfdb, first, limit)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)

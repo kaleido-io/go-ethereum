@@ -19,7 +19,10 @@ package rawdb
 import (
 	"bytes"
 	"os"
+	"path"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopyFrom(t *testing.T) {
@@ -72,4 +75,19 @@ func TestCopyFrom(t *testing.T) {
 		os.Remove(c.src)
 		os.Remove(c.dest)
 	}
+}
+
+func TestErrorWithRetry(t *testing.T) {
+	tempDir := os.TempDir()
+	path := path.Join(tempDir, "test.file")
+
+	file, err := openFreezerFileForAppend(path)
+	require.NoError(t, err)
+
+	file.WriteString("test content")
+	require.NoError(t, trackErrorWithRetry(file, "test"))
+
+	file.Close()
+
+	require.Error(t, trackErrorWithRetry(file, "test"))
 }

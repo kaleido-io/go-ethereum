@@ -17,9 +17,13 @@
 package rawdb
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // copyFrom copies data from 'srcPath' at offset 'offset' into 'destPath'.
@@ -116,4 +120,21 @@ func truncateFreezerFile(file *os.File, size int64) error {
 		return err
 	}
 	return nil
+}
+
+func trackErrorWithRetry(f *os.File, table string) error {
+	var maxRetries int = 5
+	var e error
+	for i := 0; i < maxRetries; i++ {
+		fmt.Println("Trying table sync", "table", table, "retry", i, "descriptor", f.Fd())
+		log.Debug("Trying table sync", "table", table, "retry", i, "descriptor", f.Fd())
+		e = f.Sync()
+		if e == nil {
+			break
+		}
+		// Wait for 5 seconds before retrying sync
+		time.Sleep(5 * time.Second)
+	}
+	fmt.Println("This is the error", e)
+	return e
 }
