@@ -248,11 +248,13 @@ func (f *Freezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (writeSize
 	defer f.writeLock.Unlock()
 
 	// Roll back all tables to the starting position in case of error.
-	prevItem := f.frozen.Load()
+	prevItem := f.frozen.Load() // 7474 current - 7579
+	log.Debug("Modifying Ancient", "Previous Items", prevItem)
 	defer func() {
 		if err != nil {
 			// The write operation has failed. Go back to the previous item position.
 			for name, table := range f.tables {
+				log.Debug("Checking Truncating Head", "Table", name)
 				err := table.truncateHead(prevItem)
 				if err != nil {
 					log.Error("Freezer table roll-back failed", "table", name, "index", prevItem, "err", err)

@@ -379,7 +379,8 @@ func (t *freezerTable) truncateHead(items uint64) error {
 	defer t.lock.Unlock()
 
 	// Ensure the given truncate target falls in the correct range
-	existing := t.items.Load()
+	existing := t.items.Load() // it will be on current block
+	t.logger.Debug("Values in Truncate Head", "existing", existing, "items", items)
 	if existing <= items {
 		return nil
 	}

@@ -255,6 +255,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 }
 
 func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hashes []common.Hash, err error) {
+	log.Debug("Checking Freeze Range")
 	hashes = make([]common.Hash, 0, limit-number)
 
 	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
