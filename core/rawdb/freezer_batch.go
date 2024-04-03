@@ -199,6 +199,7 @@ func (batch *freezerTableBatch) commit() error {
 	batch.indexBuffer = batch.indexBuffer[:0]
 
 	// Update headBytes of table.
+	fmt.Printf("Updating Items count - %d \n", batch.curItem)
 	batch.t.headBytes += dataSize
 	batch.t.items.Store(batch.curItem)
 

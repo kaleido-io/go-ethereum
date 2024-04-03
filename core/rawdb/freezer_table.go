@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -381,6 +382,7 @@ func (t *freezerTable) truncateHead(items uint64) error {
 	// Ensure the given truncate target falls in the correct range
 	existing := t.items.Load() // it will be on current block
 	t.logger.Debug("Values in Truncate Head", "existing", existing, "items", items)
+	fmt.Println("Values", existing, items)
 	if existing <= items {
 		return nil
 	}
@@ -894,21 +896,37 @@ func (t *freezerTable) Sync() error {
 		return errClosed
 	}
 	var err error
-	trackError := func(e error) {
-		if e != nil && err == nil {
-			err = e
+	// trackError := func(e error) {
+	// 	if e != nil && err == nil {
+	// 		err = e
+	// 	}
+	// }
+
+	trackErrorWithRetry := func(f *os.File, table string) {
+		var maxRetries int = 5
+		var e error
+		for i := 0; i < maxRetries; i++ {
+			log.Debug("Trying table sync", "table", table, "retry", i)
+			e = f.Sync()
+			if e == nil {
+				break
+			}
+			// Wait for 5 seconds before retrying sync
+			time.Sleep(5 * time.Second)
 		}
+		err = e
 	}
 
-	// trackErrorWithRetry := func(f *os.File){
+	// trackErrorWithRetry(t.index.Sync())
+	// trackErrorWithRetry(t.meta.Sync())
+	// trackErrorWithRetry(t.head.Sync())
 
-	// }
 	log.Debug("Syncing Index.", "File descriptor - ", t.index.Fd())
-	trackError(t.index.Sync())
-	log.Debug("Syncing Meta.", "File descriptor - ", t.index.Fd())
-	trackError(t.meta.Sync())
-	log.Debug("Syncing Head.", "File descriptor - ", t.index.Fd())
-	trackError(t.head.Sync())
+	trackErrorWithRetry(t.index, "index")
+	log.Debug("Syncing Meta.", "File descriptor - ", t.meta.Fd())
+	trackErrorWithRetry(t.meta, "meta")
+	log.Debug("Syncing Head.", "File descriptor - ", t.head.Fd())
+	trackErrorWithRetry(t.head, "head")
 	return err
 }
 

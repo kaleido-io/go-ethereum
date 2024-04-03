@@ -271,6 +271,7 @@ func (f *Freezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (writeSize
 	if err != nil {
 		return 0, err
 	}
+	log.Debug("Updating frozen count", "frozen", item)
 	f.frozen.Store(item)
 	return writeSize, nil
 }
