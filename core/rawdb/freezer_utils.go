@@ -17,10 +17,10 @@
 package rawdb
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -122,19 +122,23 @@ func truncateFreezerFile(file *os.File, size int64) error {
 	return nil
 }
 
+// Try to stat the file 5 times with the provided file descriptor
+// before actually trying to sync to not corrupt the file
 func trackErrorWithRetry(f *os.File, table string) error {
 	var maxRetries int = 5
 	var e error
 	for i := 0; i < maxRetries; i++ {
-		fmt.Println("Trying table sync", "table", table, "retry", i, "descriptor", f.Fd())
-		log.Debug("Trying table sync", "table", table, "retry", i, "descriptor", f.Fd())
-		e = f.Sync()
+
+		// This catches "bad file descriptor"
+		e = syscall.Fstat(int(f.Fd()), &syscall.Stat_t{})
 		if e == nil {
-			break
+			return f.Sync()
 		}
-		// Wait for 5 seconds before retrying sync
+
+		// Log retry and Wait for 5 seconds before retrying sync
+		log.Debug("Retrying table sync", "table", table, "retry", i, "descriptor", f.Fd(), "error", e)
 		time.Sleep(5 * time.Second)
 	}
-	fmt.Println("This is the error", e)
+	// At this point it still did not respond, so something is wrong, return crit error
 	return e
 }

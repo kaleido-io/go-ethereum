@@ -254,7 +254,6 @@ func (f *Freezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (writeSize
 		if err != nil {
 			// The write operation has failed. Go back to the previous item position.
 			for name, table := range f.tables {
-				log.Debug("Checking Truncating Head", "table", name)
 				err := table.truncateHead(prevItem)
 				if err != nil {
 					log.Error("Freezer table roll-back failed", "table", name, "index", prevItem, "err", err)
@@ -271,7 +270,6 @@ func (f *Freezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (writeSize
 	if err != nil {
 		return 0, err
 	}
-	log.Debug("Updating frozen count", "frozen", item)
 	f.frozen.Store(item)
 	return writeSize, nil
 }
@@ -320,7 +318,6 @@ func (f *Freezer) TruncateTail(tail uint64) error {
 func (f *Freezer) Sync() error {
 	var errs []error
 	for _, table := range f.tables {
-		log.Debug("Syncing Table", "name", table.name)
 		if err := table.Sync(); err != nil {
 			errs = append(errs, err)
 		}

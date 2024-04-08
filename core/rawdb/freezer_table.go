@@ -379,9 +379,7 @@ func (t *freezerTable) truncateHead(items uint64) error {
 	defer t.lock.Unlock()
 
 	// Ensure the given truncate target falls in the correct range
-	existing := t.items.Load() // it will be on current block
-	t.logger.Debug("Values in Truncate Head", "existing", existing, "items", items)
-	fmt.Println("Values", existing, items)
+	existing := t.items.Load()
 	if existing <= items {
 		return nil
 	}
@@ -900,25 +898,6 @@ func (t *freezerTable) Sync() error {
 	// 		err = e
 	// 	}
 	// }
-
-	// trackErrorWithRetry := func(f *os.File, table string) {
-	// 	var maxRetries int = 5
-	// 	var e error
-	// 	for i := 0; i < maxRetries; i++ {
-	// 		log.Debug("Trying table sync", "table", table, "retry", i, "descriptor", f.Fd())
-	// 		e = f.Sync()
-	// 		if e == nil {
-	// 			break
-	// 		}
-	// 		// Wait for 5 seconds before retrying sync
-	// 		time.Sleep(5 * time.Second)
-	// 	}
-	// 	err = e
-	// }
-
-	// trackErrorWithRetry(t.index.Sync())
-	// trackErrorWithRetry(t.meta.Sync())
-	// trackErrorWithRetry(t.head.Sync())
 
 	err = trackErrorWithRetry(t.index, "index")
 	if err != nil {

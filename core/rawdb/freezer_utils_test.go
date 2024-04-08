@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"os"
 	"path"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -79,15 +80,35 @@ func TestCopyFrom(t *testing.T) {
 
 func TestErrorWithRetry(t *testing.T) {
 	tempDir := os.TempDir()
-	path := path.Join(tempDir, "test.file")
 
-	file, err := openFreezerFileForAppend(path)
+	// Good file
+	filePath := path.Join(tempDir, "test.file")
+	file, err := openFreezerFileForAppend(filePath)
 	require.NoError(t, err)
 
 	file.WriteString("test content")
 	require.NoError(t, trackErrorWithRetry(file, "test"))
 
-	file.Close()
+	// Testing fstat response
+	goodFileFstat := syscall.Fstat(int(file.Fd()), &syscall.Stat_t{})
+	require.NoError(t, goodFileFstat)
 
-	require.Error(t, trackErrorWithRetry(file, "test"))
+	// Case - File closed early
+	earlyCloseFilePath := path.Join(tempDir, "earlyClose.file")
+	earlyCloseFile, err := openFreezerFileForAppend(earlyCloseFilePath)
+	earlyCloseFile.WriteString("bad test content")
+
+	// Close that file
+	earlyCloseFile.Close()
+	require.ErrorIs(t, trackErrorWithRetry(earlyCloseFile, "test"), syscall.EBADF)
+
+	// Testing Fstat error
+	earlyCloseFstat := syscall.Fstat(int(earlyCloseFile.Fd()), &syscall.Stat_t{})
+	require.ErrorIs(t, earlyCloseFstat, syscall.EBADF)
+
+	// Testing Fstat error for random file descriptor that does not not relate to a file
+	randomFD := 9
+	randomFstat := syscall.Fstat(randomFD, &syscall.Stat_t{})
+	require.ErrorIs(t, randomFstat, syscall.EBADF)
+
 }
