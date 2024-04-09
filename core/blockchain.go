@@ -611,6 +611,7 @@ func (bc *BlockChain) SetSafe(header *types.Header) {
 //
 // The method returns the block number where the requested root cap was found.
 func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Hash, repair bool) (uint64, error) {
+	log.Debug("Setting Head beyond root", "root", root)
 	if !bc.chainmu.TryLock() {
 		return 0, errChainStopped
 	}
@@ -623,7 +624,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// current freezer limit to start nuking id underflown
 	pivot := rawdb.ReadLastPivotNumber(bc.db)
 	frozen, _ := bc.db.Ancients()
-
+	log.Debug("Pivot and frozen block", "pivot", *pivot, "frozen", frozen)
 	updateFn := func(db ethdb.KeyValueWriter, header *types.Header) (*types.Header, bool) {
 		// Rewind the blockchain, ensuring we don't end up with a stateless head
 		// block. Note, depth equality is permitted to allow using SetHead as a
@@ -641,6 +642,8 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 
 				for {
 					// If a root threshold was requested but not yet crossed, check
+					// when we found the root, beyond root become true
+					log.Debug("Checking Root conditions", "beyondroot", !beyondRoot, "target", root, "current", newHeadBlock.Root())
 					if root != (common.Hash{}) && !beyondRoot && newHeadBlock.Root() == root {
 						beyondRoot, rootNumber = true, newHeadBlock.NumberU64()
 					}
@@ -1396,6 +1399,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 				log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", flushInterval, "optimum", float64(chosen-bc.lastWrite)/TriesInMemory)
 			}
 			// Flush an entire trie and restart the counters
+			log.Info("Flushing trie", "number", chosen, "root", header.Root)
 			bc.triedb.Commit(header.Root, true)
 			bc.lastWrite = chosen
 			bc.gcproc = 0
