@@ -375,6 +375,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 // we want to ensure that *at least* the requested number of diff layers remain.
 func (t *Tree) Cap(root common.Hash, layers int) error {
 	// Retrieve the head snapshot to cap from
+	log.Debug("Cap snap tree", "root", root, "layers", layers)
 	snap := t.Snapshot(root)
 	if snap == nil {
 		return fmt.Errorf("snapshot [%#x] missing", root)
@@ -458,6 +459,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 // survival is only known *after* capping, we need to omit it from the count if
 // we want to ensure that *at least* the requested number of diff layers remain.
 func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
+	log.Debug("Tree cap internal layer")
 	// Dive until we run out of layers or reach the persistent database
 	for i := 0; i < layers-1; i++ {
 		// If we still have diff layers below, continue down
@@ -465,6 +467,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			diff = parent
 		} else {
 			// Diff stack too shallow, return without modifications
+			log.Debug("Diff layer too shallow. No Modification", "count", i, "layers", layers)
 			return nil
 		}
 	}
@@ -472,9 +475,11 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	// the memory limit is not yet exceeded.
 	switch parent := diff.parent.(type) {
 	case *diskLayer:
+		log.Debug("Tree Parent case", "type", "disklayer", "parent", parent)
 		return nil
 
 	case *diffLayer:
+		log.Debug("Tree Parent case", "type", "difflayer", "parent", parent)
 		// Hold the write lock until the flattened parent is linked correctly.
 		// Otherwise, the stale layer may be accessed by external reads in the
 		// meantime.
@@ -491,12 +496,14 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			t.onFlatten()
 		}
 		diff.parent = flattened
+		log.Debug("Flattened Memory Limit", "limit", aggregatorMemoryLimit, "current", flattened.memory)
 		if flattened.memory < aggregatorMemoryLimit {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
 			// will move from underneath the generator so we **must** merge all the
 			// partial data down into the snapshot and restart the generation.
 			if flattened.parent.(*diskLayer).genAbort == nil {
+				log.Debug("Returning from cap")
 				return nil
 			}
 		}
@@ -507,6 +514,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	bottom := diff.parent.(*diffLayer)
 
 	bottom.lock.RLock()
+	log.Debug("Going into diffToDisk")
 	base := diffToDisk(bottom)
 	bottom.lock.RUnlock()
 
@@ -521,6 +529,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 // The disk layer persistence should be operated in an atomic way. All updates should
 // be discarded if the whole transition if not finished.
 func diffToDisk(bottom *diffLayer) *diskLayer {
+	log.Debug("Checking Diff to disk")
 	var (
 		base  = bottom.parent.(*diskLayer)
 		batch = base.diskdb.NewBatch()
@@ -533,6 +542,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		stats = <-abort
 	}
 	// Put the deletion in the batch writer, flush all updates in the final step.
+	log.Debug("Deleting Snapshot")
 	rawdb.DeleteSnapshotRoot(batch)
 
 	// Mark the original base as stale as we're going to create a new wrapper
@@ -544,6 +554,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	base.lock.Unlock()
 
 	// Destroy all the destructed accounts from the database
+	log.Debug("Destroy account from database")
 	for hash := range bottom.destructSet {
 		// Skip any account not covered yet by the snapshot
 		if base.genMarker != nil && bytes.Compare(hash[:], base.genMarker) > 0 {
@@ -564,6 +575,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 			// huge). It's ok to flush, the root will go missing in case of a
 			// crash and we'll detect and regenerate the snapshot.
 			if batch.ValueSize() > ethdb.IdealBatchSize {
+				log.Debug("Write batch")
 				if err := batch.Write(); err != nil {
 					log.Crit("Failed to write storage deletions", "err", err)
 				}
@@ -573,6 +585,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		it.Release()
 	}
 	// Push all updated accounts into the database
+	log.Debug("Push Update account from database")
 	for hash, data := range bottom.accountData {
 		// Skip any account not covered yet by the snapshot
 		if base.genMarker != nil && bytes.Compare(hash[:], base.genMarker) > 0 {
@@ -590,6 +603,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		// root will go missing in case of a crash and we'll detect and regen
 		// the snapshot.
 		if batch.ValueSize() > ethdb.IdealBatchSize {
+			log.Debug("Write account batch")
 			if err := batch.Write(); err != nil {
 				log.Crit("Failed to write storage deletions", "err", err)
 			}
@@ -622,8 +636,11 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 			snapshotFlushStorageSizeMeter.Mark(int64(len(data)))
 		}
 	}
+	log.Debug("At write snapshot point", "bottom", bottom.root)
 	// Update the snapshot block marker and write any remainder data
 	rawdb.WriteSnapshotRoot(batch, bottom.root)
+
+	log.Debug("Snapshot Write complete")
 
 	// Write out the generator progress marker and report
 	journalProgress(batch, base.genMarker, stats)

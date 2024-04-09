@@ -1336,6 +1336,7 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
+	log.Debug("Writing block with State")
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
@@ -1361,6 +1362,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err != nil {
 		return err
 	}
+	log.Debug("Committed State", "root", root)
 	// If we're running an archive node, always flush
 	if bc.cacheConfig.TrieDirtyDisabled {
 		return bc.triedb.Commit(root, false)
@@ -1371,6 +1373,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	current := block.NumberU64()
 	// Flush limits are not considered for the first TriesInMemory blocks.
+	log.Debug("Trie in memory", "current", current, "inmemory", TriesInMemory)
 	if current <= TriesInMemory {
 		return nil
 	}
@@ -1379,12 +1382,14 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		nodes, imgs = bc.triedb.Size()
 		limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 	)
+	log.Debug("Trie dirty size", "size", nodes, "limit", limit, "imgs", imgs)
 	if nodes > limit || imgs > 4*1024*1024 {
 		bc.triedb.Cap(limit - ethdb.IdealBatchSize)
 	}
 	// Find the next state trie we need to commit
 	chosen := current - TriesInMemory
 	flushInterval := time.Duration(bc.flushInterval.Load())
+	log.Debug("Flush Interval", "proc", bc.gcproc, "interval", flushInterval)
 	// If we exceeded time allowance, flush an entire trie to disk
 	if bc.gcproc > flushInterval {
 		// If the header is missing (canonical chain behind), we're reorging a low
@@ -1405,6 +1410,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			bc.gcproc = 0
 		}
 	}
+	log.Debug("Flusing Interval not reached")
 	// Garbage collect anything below our required write retention
 	for !bc.triegc.Empty() {
 		root, number := bc.triegc.Pop()
@@ -1431,6 +1437,7 @@ func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
 func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+	log.Debug("Writing Block and set head")
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
 	}
