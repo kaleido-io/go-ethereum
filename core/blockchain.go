@@ -397,10 +397,11 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			recover = true
 		}
 		snapconfig := snapshot.Config{
-			CacheSize:  bc.cacheConfig.SnapshotLimit,
-			Recovery:   recover,
-			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
-			AsyncBuild: !bc.cacheConfig.SnapshotWait,
+			CacheSize:              bc.cacheConfig.SnapshotLimit,
+			Recovery:               recover,
+			NoBuild:                bc.cacheConfig.SnapshotNoBuild,
+			AsyncBuild:             !bc.cacheConfig.SnapshotWait,
+			EnableSnapRootInterval: true,
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root)
 	}

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -149,10 +150,12 @@ type snapshot interface {
 
 // Config includes the configurations for snapshots.
 type Config struct {
-	CacheSize  int  // Megabytes permitted to use for read caches
-	Recovery   bool // Indicator that the snapshots is in the recovery mode
-	NoBuild    bool // Indicator that the snapshots generation is disallowed
-	AsyncBuild bool // The snapshot generation is allowed to be constructed asynchronously
+	CacheSize              int  // Megabytes permitted to use for read caches
+	Recovery               bool // Indicator that the snapshots is in the recovery mode
+	NoBuild                bool // Indicator that the snapshots generation is disallowed
+	AsyncBuild             bool // The snapshot generation is allowed to be constructed asynchronously
+	EnableSnapRootInterval bool // Enable forcing snap root generation on an interval
+	SnapRootInterval       int  // Time in seconds after which to force a snapshot update
 }
 
 // Tree is an Ethereum state snapshot tree. It consists of one persistent base
@@ -165,12 +168,12 @@ type Config struct {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	config Config                   // Snapshots configurations
-	diskdb ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb *trie.Database           // In-memory cache to access the trie through
-	layers map[common.Hash]snapshot // Collection of all known layers
-	lock   sync.RWMutex
-
+	config   Config                   // Snapshots configurations
+	diskdb   ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb   *trie.Database           // In-memory cache to access the trie through
+	layers   map[common.Hash]snapshot // Collection of all known layers
+	lock     sync.RWMutex
+	baseTime time.Time // Base time when the tree was started/restarted
 	// Test hooks
 	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
 }
@@ -194,11 +197,19 @@ type Tree struct {
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash) (*Tree, error) {
 	// Create a new, empty snapshot tree
 	snap := &Tree{
-		config: config,
-		diskdb: diskdb,
-		triedb: triedb,
-		layers: make(map[common.Hash]snapshot),
+		config:   config,
+		diskdb:   diskdb,
+		triedb:   triedb,
+		layers:   make(map[common.Hash]snapshot),
+		baseTime: time.Now(),
 	}
+
+	// Setting the default interval value if it is enabled
+	// Important to set it to default value if enabled to avoid update every block
+	if config.EnableSnapRootInterval && (config.SnapRootInterval == 0) {
+		snap.config.SnapRootInterval = defaultSnapRootInterval
+	}
+
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
 	head, disabled, err := loadSnapshot(diskdb, triedb, root, config.CacheSize, config.Recovery, config.NoBuild)
 	if disabled {
@@ -496,12 +507,17 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			t.onFlatten()
 		}
 		diff.parent = flattened
-		log.Debug("Flattened Memory Limit", "limit", aggregatorMemoryLimit, "current", flattened.memory)
-		if flattened.memory < aggregatorMemoryLimit {
+		// Check if we are above the interval time if it is enabled
+		timeFromLastSnap := time.Now().Sub(t.baseTime).Seconds()
+		forceSnapshot := (t.config.EnableSnapRootInterval && (int(timeFromLastSnap) >= t.config.SnapRootInterval))
+
+		log.Debug("Flattened Memory Limit", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "timeThreshold", t.config.SnapRootInterval, "timePassed", timeFromLastSnap, "forceSnapshot", forceSnapshot)
+		if (flattened.memory < aggregatorMemoryLimit) && !forceSnapshot {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
 			// will move from underneath the generator so we **must** merge all the
 			// partial data down into the snapshot and restart the generation.
+			// or time interval has been crossed to force a snapshot
 			if flattened.parent.(*diskLayer).genAbort == nil {
 				log.Debug("Returning from cap")
 				return nil
@@ -512,12 +528,12 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	}
 	// If the bottom-most layer is larger than our memory cap, persist to disk
 	bottom := diff.parent.(*diffLayer)
-
 	bottom.lock.RLock()
 	log.Debug("Going into diffToDisk")
 	base := diffToDisk(bottom)
 	bottom.lock.RUnlock()
-
+	// resetting the baseTime
+	t.baseTime = time.Now()
 	t.layers[base.root] = base
 	diff.parent = base
 	return base

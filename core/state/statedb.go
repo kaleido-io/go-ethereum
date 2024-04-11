@@ -1045,7 +1045,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 	// If snapshotting is enabled, update the snapshot tree with this new version
 	if s.snap != nil {
 		start := time.Now()
-		log.Debug("Snapshot update status", "parent", s.snap.Root(), "root", root)
+		log.Debug("Snapshot update status", "parent", s.snap.Root(), "root", root, "diskroot", s.snaps.DiskRoot())
 		// Only update if there's a state transition (skip empty Clique blocks)
 		if parent := s.snap.Root(); parent != root {
 			if err := s.snaps.Update(root, parent, s.convertAccountSet(s.stateObjectsDestruct), s.snapAccounts, s.snapStorage); err != nil {
