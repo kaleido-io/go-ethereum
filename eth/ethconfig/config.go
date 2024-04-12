@@ -167,6 +167,8 @@ type Config struct {
 	TrieTimeout             time.Duration `toml:",omitempty"` // Cumulative Time interval spent on gc, after which to flush trie cache to disk
 	SnapshotCache           int
 	Preimages               bool
+	EnableSnapRootInterval  bool
+	SnapRootThreshold       int
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int

@@ -137,18 +137,22 @@ type CacheConfig struct {
 	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 
-	SnapshotNoBuild bool // Whether the background generation is allowed
-	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	EnableSnapRootInterval bool // Enable to force snapshots based on time Interval
+	SnapRootThreshold      int  // Time in seconds to force a root snapshot
+	SnapshotNoBuild        bool // Whether the background generation is allowed
+	SnapshotWait           bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
 
 // defaultCacheConfig are the default caching values if none are specified by the
 // user (also used during testing).
 var defaultCacheConfig = &CacheConfig{
-	TrieCleanLimit: 256,
-	TrieDirtyLimit: 256,
-	TrieTimeLimit:  5 * time.Minute,
-	SnapshotLimit:  256,
-	SnapshotWait:   true,
+	TrieCleanLimit:         256,
+	TrieDirtyLimit:         256,
+	TrieTimeLimit:          5 * time.Minute,
+	SnapshotLimit:          256,
+	SnapshotWait:           true,
+	EnableSnapRootInterval: false,
+	SnapRootThreshold:      600, // 10 min
 }
 
 // BlockChain represents the canonical chain given a database with a genesis
@@ -401,7 +405,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			Recovery:               recover,
 			NoBuild:                bc.cacheConfig.SnapshotNoBuild,
 			AsyncBuild:             !bc.cacheConfig.SnapshotWait,
-			EnableSnapRootInterval: true,
+			EnableSnapRootInterval: bc.cacheConfig.EnableSnapRootInterval,
+			SnapRootThreshold:      bc.cacheConfig.SnapRootThreshold,
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root)
 	}
@@ -612,7 +617,6 @@ func (bc *BlockChain) SetSafe(header *types.Header) {
 //
 // The method returns the block number where the requested root cap was found.
 func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Hash, repair bool) (uint64, error) {
-	log.Debug("Setting Head beyond root", "root", root)
 	if !bc.chainmu.TryLock() {
 		return 0, errChainStopped
 	}
@@ -625,7 +629,6 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// current freezer limit to start nuking id underflown
 	pivot := rawdb.ReadLastPivotNumber(bc.db)
 	frozen, _ := bc.db.Ancients()
-	log.Debug("Pivot and frozen block", "frozen", frozen)
 	updateFn := func(db ethdb.KeyValueWriter, header *types.Header) (*types.Header, bool) {
 		// Rewind the blockchain, ensuring we don't end up with a stateless head
 		// block. Note, depth equality is permitted to allow using SetHead as a
@@ -643,8 +646,6 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 
 				for {
 					// If a root threshold was requested but not yet crossed, check
-					// when we found the root, beyond root become true
-					log.Debug("Checking Root conditions", "beyondroot", !beyondRoot, "target", root, "current", newHeadBlock.Root())
 					if root != (common.Hash{}) && !beyondRoot && newHeadBlock.Root() == root {
 						beyondRoot, rootNumber = true, newHeadBlock.NumberU64()
 					}
@@ -1337,7 +1338,6 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
-	log.Debug("Writing block with State")
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
@@ -1374,7 +1374,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	current := block.NumberU64()
 	// Flush limits are not considered for the first TriesInMemory blocks.
-	log.Debug("Trie in memory", "current", current, "inmemory", TriesInMemory)
+	log.Debug("Trie in memory", "current", current, "inMemory", TriesInMemory)
 	if current <= TriesInMemory {
 		return nil
 	}
@@ -1383,14 +1383,14 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		nodes, imgs = bc.triedb.Size()
 		limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 	)
-	log.Debug("Trie dirty size", "size", nodes, "limit", limit, "imgs", imgs)
+
 	if nodes > limit || imgs > 4*1024*1024 {
 		bc.triedb.Cap(limit - ethdb.IdealBatchSize)
 	}
 	// Find the next state trie we need to commit
 	chosen := current - TriesInMemory
 	flushInterval := time.Duration(bc.flushInterval.Load())
-	log.Debug("Flush Interval", "proc", bc.gcproc, "interval", flushInterval)
+	log.Debug("Flush Interval", "proc", bc.gcproc, "interval", flushInterval, "block", chosen, "flushing", (bc.gcproc > flushInterval))
 	// If we exceeded time allowance, flush an entire trie to disk
 	if bc.gcproc > flushInterval {
 		// If the header is missing (canonical chain behind), we're reorging a low
@@ -1405,13 +1405,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 				log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", flushInterval, "optimum", float64(chosen-bc.lastWrite)/TriesInMemory)
 			}
 			// Flush an entire trie and restart the counters
-			log.Info("Flushing trie", "number", chosen, "root", header.Root)
 			bc.triedb.Commit(header.Root, true)
 			bc.lastWrite = chosen
 			bc.gcproc = 0
 		}
 	}
-	log.Debug("Flusing Interval not reached")
+
 	// Garbage collect anything below our required write retention
 	for !bc.triegc.Empty() {
 		root, number := bc.triegc.Pop()
@@ -1438,7 +1437,6 @@ func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
 func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-	log.Debug("Writing Block and set head")
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
 	}

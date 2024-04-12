@@ -182,15 +182,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			EnablePreimageRecording: config.EnablePreimageRecording,
 		}
 		cacheConfig = &core.CacheConfig{
-			TrieCleanLimit:      config.TrieCleanCache,
-			TrieCleanJournal:    stack.ResolvePath(config.TrieCleanCacheJournal),
-			TrieCleanRejournal:  config.TrieCleanCacheRejournal,
-			TrieCleanNoPrefetch: config.NoPrefetch,
-			TrieDirtyLimit:      config.TrieDirtyCache,
-			TrieDirtyDisabled:   config.NoPruning,
-			TrieTimeLimit:       config.TrieTimeout,
-			SnapshotLimit:       config.SnapshotCache,
-			Preimages:           config.Preimages,
+			TrieCleanLimit:         config.TrieCleanCache,
+			TrieCleanJournal:       stack.ResolvePath(config.TrieCleanCacheJournal),
+			TrieCleanRejournal:     config.TrieCleanCacheRejournal,
+			TrieCleanNoPrefetch:    config.NoPrefetch,
+			TrieDirtyLimit:         config.TrieDirtyCache,
+			TrieDirtyDisabled:      config.NoPruning,
+			TrieTimeLimit:          config.TrieTimeout,
+			SnapshotLimit:          config.SnapshotCache,
+			Preimages:              config.Preimages,
+			EnableSnapRootInterval: config.EnableSnapRootInterval,
+			SnapRootThreshold:      config.SnapRootThreshold,
 		}
 	)
 	// Override the chain config with provided settings.

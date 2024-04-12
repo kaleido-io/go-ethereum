@@ -155,7 +155,7 @@ type Config struct {
 	NoBuild                bool // Indicator that the snapshots generation is disallowed
 	AsyncBuild             bool // The snapshot generation is allowed to be constructed asynchronously
 	EnableSnapRootInterval bool // Enable forcing snap root generation on an interval
-	SnapRootInterval       int  // Time in seconds after which to force a snapshot update
+	SnapRootThreshold      int  // Time in seconds after which to force a snapshot update
 }
 
 // Tree is an Ethereum state snapshot tree. It consists of one persistent base
@@ -173,7 +173,7 @@ type Tree struct {
 	triedb   *trie.Database           // In-memory cache to access the trie through
 	layers   map[common.Hash]snapshot // Collection of all known layers
 	lock     sync.RWMutex
-	baseTime time.Time // Base time when the tree was started/restarted
+	baseTime time.Time // Base time to calculate snap root interval
 	// Test hooks
 	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
 }
@@ -204,10 +204,10 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root 
 		baseTime: time.Now(),
 	}
 
-	// Setting the default interval value if it is enabled
-	// Important to set it to default value if enabled to avoid update every block
-	if config.EnableSnapRootInterval && (config.SnapRootInterval == 0) {
-		snap.config.SnapRootInterval = defaultSnapRootInterval
+	// Setting the default interval value if it is enabled and not set
+	// Important to set it to at least default value if enabled to avoid update snap root very aggressively
+	if config.EnableSnapRootInterval && (config.SnapRootThreshold < defaultSnapRootInterval) {
+		snap.config.SnapRootThreshold = defaultSnapRootInterval
 	}
 
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
@@ -386,7 +386,6 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 // we want to ensure that *at least* the requested number of diff layers remain.
 func (t *Tree) Cap(root common.Hash, layers int) error {
 	// Retrieve the head snapshot to cap from
-	log.Debug("Cap snap tree", "root", root, "layers", layers)
 	snap := t.Snapshot(root)
 	if snap == nil {
 		return fmt.Errorf("snapshot [%#x] missing", root)
@@ -470,7 +469,6 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 // survival is only known *after* capping, we need to omit it from the count if
 // we want to ensure that *at least* the requested number of diff layers remain.
 func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
-	log.Debug("Tree cap internal layer")
 	// Dive until we run out of layers or reach the persistent database
 	for i := 0; i < layers-1; i++ {
 		// If we still have diff layers below, continue down
@@ -486,11 +484,9 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	// the memory limit is not yet exceeded.
 	switch parent := diff.parent.(type) {
 	case *diskLayer:
-		log.Debug("Tree Parent case", "type", "disklayer", "parent", parent)
 		return nil
 
 	case *diffLayer:
-		log.Debug("Tree Parent case", "type", "difflayer", "parent", parent)
 		// Hold the write lock until the flattened parent is linked correctly.
 		// Otherwise, the stale layer may be accessed by external reads in the
 		// meantime.
@@ -509,9 +505,9 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		diff.parent = flattened
 		// Check if we are above the interval time if it is enabled
 		timeFromLastSnap := time.Now().Sub(t.baseTime).Seconds()
-		forceSnapshot := (t.config.EnableSnapRootInterval && (int(timeFromLastSnap) >= t.config.SnapRootInterval))
+		forceSnapshot := (t.config.EnableSnapRootInterval && (int(timeFromLastSnap) >= t.config.SnapRootThreshold))
 
-		log.Debug("Flattened Memory Limit", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "timeThreshold", t.config.SnapRootInterval, "timePassed", timeFromLastSnap, "forceSnapshot", forceSnapshot)
+		log.Debug("Validating snapRoot update", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "timeThreshold", common.PrettyDuration(t.config.SnapRootThreshold), "elapsed", common.PrettyDuration(timeFromLastSnap), "forceSnapshot", forceSnapshot)
 		if (flattened.memory < aggregatorMemoryLimit) && !forceSnapshot {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
@@ -519,7 +515,6 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			// partial data down into the snapshot and restart the generation.
 			// or time interval has been crossed to force a snapshot
 			if flattened.parent.(*diskLayer).genAbort == nil {
-				log.Debug("Returning from cap")
 				return nil
 			}
 		}
@@ -529,7 +524,6 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	// If the bottom-most layer is larger than our memory cap, persist to disk
 	bottom := diff.parent.(*diffLayer)
 	bottom.lock.RLock()
-	log.Debug("Going into diffToDisk")
 	base := diffToDisk(bottom)
 	bottom.lock.RUnlock()
 	// resetting the baseTime
@@ -545,7 +539,6 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 // The disk layer persistence should be operated in an atomic way. All updates should
 // be discarded if the whole transition if not finished.
 func diffToDisk(bottom *diffLayer) *diskLayer {
-	log.Debug("Checking Diff to disk")
 	var (
 		base  = bottom.parent.(*diskLayer)
 		batch = base.diskdb.NewBatch()
@@ -558,7 +551,6 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		stats = <-abort
 	}
 	// Put the deletion in the batch writer, flush all updates in the final step.
-	log.Debug("Deleting Snapshot")
 	rawdb.DeleteSnapshotRoot(batch)
 
 	// Mark the original base as stale as we're going to create a new wrapper
@@ -570,7 +562,6 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	base.lock.Unlock()
 
 	// Destroy all the destructed accounts from the database
-	log.Debug("Destroy account from database")
 	for hash := range bottom.destructSet {
 		// Skip any account not covered yet by the snapshot
 		if base.genMarker != nil && bytes.Compare(hash[:], base.genMarker) > 0 {
@@ -591,7 +582,6 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 			// huge). It's ok to flush, the root will go missing in case of a
 			// crash and we'll detect and regenerate the snapshot.
 			if batch.ValueSize() > ethdb.IdealBatchSize {
-				log.Debug("Write batch")
 				if err := batch.Write(); err != nil {
 					log.Crit("Failed to write storage deletions", "err", err)
 				}
@@ -601,7 +591,6 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		it.Release()
 	}
 	// Push all updated accounts into the database
-	log.Debug("Push Update account from database")
 	for hash, data := range bottom.accountData {
 		// Skip any account not covered yet by the snapshot
 		if base.genMarker != nil && bytes.Compare(hash[:], base.genMarker) > 0 {
@@ -619,7 +608,6 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		// root will go missing in case of a crash and we'll detect and regen
 		// the snapshot.
 		if batch.ValueSize() > ethdb.IdealBatchSize {
-			log.Debug("Write account batch")
 			if err := batch.Write(); err != nil {
 				log.Crit("Failed to write storage deletions", "err", err)
 			}
@@ -652,11 +640,8 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 			snapshotFlushStorageSizeMeter.Mark(int64(len(data)))
 		}
 	}
-	log.Debug("At write snapshot point", "bottom", bottom.root)
 	// Update the snapshot block marker and write any remainder data
 	rawdb.WriteSnapshotRoot(batch, bottom.root)
-
-	log.Debug("Snapshot Write complete")
 
 	// Write out the generator progress marker and report
 	journalProgress(batch, base.genMarker, stats)
@@ -666,7 +651,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write leftover snapshot", "err", err)
 	}
-	log.Debug("Journalled disk layer", "root", bottom.root, "complete", base.genMarker == nil)
+	log.Debug("Snapshot Root generation complete", "newSnapRoot", bottom.root)
 	res := &diskLayer{
 		root:       bottom.root,
 		cache:      base.cache,
