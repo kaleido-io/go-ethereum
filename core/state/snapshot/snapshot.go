@@ -507,7 +507,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 		timeFromLastSnap := time.Now().Sub(t.baseTime).Seconds()
 		forceSnapshot := (t.config.EnableSnapRootInterval && (int(timeFromLastSnap) >= t.config.SnapRootThreshold))
 
-		log.Debug("Validating snapRoot update", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "timeThreshold", common.PrettyDuration(t.config.SnapRootThreshold), "elapsed", common.PrettyDuration(timeFromLastSnap), "forceSnapshot", forceSnapshot)
+		log.Debug("Validating snapRoot update", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "timeThreshold", common.PrettySeconds(t.config.SnapRootThreshold), "elapsed", common.PrettySeconds(timeFromLastSnap), "forceSnapshot", forceSnapshot)
 		if (flattened.memory < aggregatorMemoryLimit) && !forceSnapshot {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
