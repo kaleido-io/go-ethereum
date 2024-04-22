@@ -355,23 +355,9 @@ func TestForceSnapRootCaps(t *testing.T) {
 			base.root: base,
 		},
 		config: Config{
+			AllowForceUpdate:        true,
 			SnapRootCommitThreshold: 10,
 		},
-	}
-
-	// validate compareThreshold method when disabled
-	if compare := snaps.CompareThreshold(100); compare {
-		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: false", compare)
-	}
-
-	// validate compareThreshold method when enabled
-	snaps.config.AllowForceUpdate = true
-	if compare := snaps.CompareThreshold(5); compare {
-		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: false", compare)
-	}
-
-	if compare := snaps.CompareThreshold(20); !compare {
-		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: true", compare)
 	}
 
 	// adding layers to the tree more than 128
@@ -430,6 +416,24 @@ func TestForceSnapRootCaps(t *testing.T) {
 	if newLayers := len(snaps.layers); newLayers != 129 {
 		t.Errorf("Unexpected number of layers after flatten - count: %d, expected: 130", newLayers)
 	}
+
+	// validate compareThreshold method when enabled
+	snaps.commitCounter = 5
+	if compare := snaps.CompareThreshold(); compare {
+		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: false", compare)
+	}
+
+	snaps.commitCounter = 200
+	if compare := snaps.CompareThreshold(); !compare {
+		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: true", compare)
+	}
+
+	// validate compareThreshold method when disabled
+	snaps.config.AllowForceUpdate = false
+	if compare := snaps.CompareThreshold(); compare {
+		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: false", compare)
+	}
+
 }
 
 // TestSnaphots tests the functionality for retrieving the snapshot

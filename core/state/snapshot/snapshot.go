@@ -167,11 +167,12 @@ type Config struct {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	config Config                   // Snapshots configurations
-	diskdb ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb *trie.Database           // In-memory cache to access the trie through
-	layers map[common.Hash]snapshot // Collection of all known layers
-	lock   sync.RWMutex
+	config        Config                   // Snapshots configurations
+	diskdb        ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb        *trie.Database           // In-memory cache to access the trie through
+	layers        map[common.Hash]snapshot // Collection of all known layers
+	lock          sync.RWMutex
+	commitCounter int // Counter for number of commits
 	// Test hooks
 	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
 }
@@ -862,7 +863,17 @@ func (t *Tree) DiskRoot() common.Hash {
 }
 
 // Checks the config to compare if count of commits is above threshold
-func (t *Tree) CompareThreshold(commitCounts int) bool {
-	log.Debug("Compare counts in snapshots", "count", commitCounts)
-	return (t.config.AllowForceUpdate && (commitCounts > t.config.SnapRootCommitThreshold))
+func (t *Tree) CompareThreshold() bool {
+	if !t.config.AllowForceUpdate {
+		return false
+	}
+	log.Debug("Commit counters", "counter", t.commitCounter, "threshold", t.config.SnapRootCommitThreshold)
+	if t.commitCounter > t.config.SnapRootCommitThreshold {
+		t.commitCounter = 0
+		return true
+	}
+
+	t.commitCounter++
+
+	return false
 }

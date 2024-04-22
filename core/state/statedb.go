@@ -109,9 +109,6 @@ type StateDB struct {
 	validRevisions []revision
 	nextRevisionId int
 
-	// Commit counters
-	SnapshotCommitCounter int
-
 	// Measurements gathered during execution for debugging purposes
 	AccountReads         time.Duration
 	AccountHashes        time.Duration
@@ -1051,10 +1048,6 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 		log.Debug("Snapshot update status", "parent", s.snap.Root(), "root", root, "skipping", (s.snap.Root() == root))
 		if parent := s.snap.Root(); parent != root {
 
-			force := s.compareCommits()
-
-			log.Debug("Commit counter", "counter", s.SnapshotCommitCounter, "force", force)
-
 			if err := s.snaps.Update(root, parent, s.convertAccountSet(s.stateObjectsDestruct), s.snapAccounts, s.snapStorage); err != nil {
 				log.Warn("Failed to update snapshot tree", "from", parent, "to", root, "err", err)
 			}
@@ -1062,7 +1055,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 			// - head layer is paired with HEAD state
 			// - head-1 layer is paired with HEAD-1 state
 			// - head-127 layer(bottom-most diff layer) is paired with HEAD-127 state
-			if err := s.snaps.Cap(root, 128, force); err != nil {
+			if err := s.snaps.Cap(root, 128, s.snaps.CompareThreshold()); err != nil {
 				log.Warn("Failed to cap snapshot tree", "root", root, "layers", 128, "err", err)
 			}
 		}
@@ -1182,16 +1175,4 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 		}
 	}
 	return ret
-}
-
-func (s *StateDB) compareCommits() bool {
-	if s.snaps.CompareThreshold(s.SnapshotCommitCounter) {
-		// reset the counter
-		s.SnapshotCommitCounter = 0
-		log.Debug("ReSetting counter")
-		return true
-	}
-	log.Debug("Updating Counter", "counter", s.SnapshotCommitCounter)
-	s.SnapshotCommitCounter++
-	return false
 }
