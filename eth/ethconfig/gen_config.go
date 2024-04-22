@@ -48,8 +48,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TrieTimeout             time.Duration `toml:",omitempty"`
 		SnapshotCache           int
 		Preimages               bool
-		EnableSnapRootInterval  bool
-		SnapRootThreshold       int
+		AllowForceUpdate        bool
+		SnapRootCommitThreshold int
 		FilterLogCacheSize      int
 		Miner                   miner.Config
 		Ethash                  ethash.Config
@@ -95,8 +95,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TrieTimeout = c.TrieTimeout
 	enc.SnapshotCache = c.SnapshotCache
 	enc.Preimages = c.Preimages
-	enc.EnableSnapRootInterval = c.EnableSnapRootInterval
-	enc.SnapRootThreshold = c.SnapRootThreshold
+	enc.AllowForceUpdate = c.AllowForceUpdate
+	enc.SnapRootCommitThreshold = c.SnapRootCommitThreshold
 	enc.FilterLogCacheSize = c.FilterLogCacheSize
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
@@ -146,8 +146,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TrieTimeout             *time.Duration `toml:",omitempty"`
 		SnapshotCache           *int
 		Preimages               *bool
-		EnableSnapRootInterval  *bool
-		SnapRootThreshold       *int
+		AllowForceUpdate        *bool
+		SnapRootCommitThreshold *int
 		FilterLogCacheSize      *int
 		Miner                   *miner.Config
 		Ethash                  *ethash.Config
@@ -256,11 +256,11 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.Preimages != nil {
 		c.Preimages = *dec.Preimages
 	}
-	if dec.EnableSnapRootInterval != nil {
-		c.EnableSnapRootInterval = *dec.EnableSnapRootInterval
+	if dec.AllowForceUpdate != nil {
+		c.AllowForceUpdate = *dec.AllowForceUpdate
 	}
-	if dec.SnapRootThreshold != nil {
-		c.SnapRootThreshold = *dec.SnapRootThreshold
+	if dec.SnapRootCommitThreshold != nil {
+		c.SnapRootCommitThreshold = *dec.SnapRootCommitThreshold
 	}
 	if dec.FilterLogCacheSize != nil {
 		c.FilterLogCacheSize = *dec.FilterLogCacheSize

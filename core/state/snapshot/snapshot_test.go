@@ -115,7 +115,7 @@ func TestDiskLayerExternalInvalidationFullFlatten(t *testing.T) {
 		t.Errorf("pre-cap layer count mismatch: have %d, want %d", n, 2)
 	}
 	// Commit the diff layer onto the disk and ensure it's persisted
-	if err := snaps.Cap(common.HexToHash("0x02"), 0); err != nil {
+	if err := snaps.Cap(common.HexToHash("0x02"), 0, false); err != nil {
 		t.Fatalf("failed to merge diff layer onto disk: %v", err)
 	}
 	// Since the base layer was modified, ensure that data retrievals on the external reference fail
@@ -165,7 +165,7 @@ func TestDiskLayerExternalInvalidationPartialFlatten(t *testing.T) {
 	defer func(memcap uint64) { aggregatorMemoryLimit = memcap }(aggregatorMemoryLimit)
 	aggregatorMemoryLimit = 0
 
-	if err := snaps.Cap(common.HexToHash("0x03"), 1); err != nil {
+	if err := snaps.Cap(common.HexToHash("0x03"), 1, false); err != nil {
 		t.Fatalf("failed to merge accumulator onto disk: %v", err)
 	}
 	// Since the base layer was modified, ensure that data retrievals on the external reference fail
@@ -216,14 +216,14 @@ func TestDiffLayerExternalInvalidationPartialFlatten(t *testing.T) {
 
 	// Doing a Cap operation with many allowed layers should be a no-op
 	exp := len(snaps.layers)
-	if err := snaps.Cap(common.HexToHash("0x04"), 2000); err != nil {
+	if err := snaps.Cap(common.HexToHash("0x04"), 2000, false); err != nil {
 		t.Fatalf("failed to flatten diff layer into accumulator: %v", err)
 	}
 	if got := len(snaps.layers); got != exp {
 		t.Errorf("layers modified, got %d exp %d", got, exp)
 	}
 	// Flatten the diff layer into the bottom accumulator
-	if err := snaps.Cap(common.HexToHash("0x04"), 1); err != nil {
+	if err := snaps.Cap(common.HexToHash("0x04"), 1, false); err != nil {
 		t.Fatalf("failed to flatten diff layer into accumulator: %v", err)
 	}
 	// Since the accumulator diff layer was modified, ensure that data retrievals on the external reference fail
@@ -294,11 +294,11 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 		t.Error(err)
 	}
 	// Cap to a bad root should fail
-	if err := snaps.Cap(common.HexToHash("0x1337"), 0); err == nil {
+	if err := snaps.Cap(common.HexToHash("0x1337"), 0, false); err == nil {
 		t.Errorf("expected error, got none")
 	}
 	// Now, merge the a-chain
-	snaps.Cap(common.HexToHash("0xa3"), 0)
+	snaps.Cap(common.HexToHash("0xa3"), 0, false)
 
 	// At this point, a2 got merged into a1. Thus, a1 is now modified, and as a1 is
 	// the parent of b2, b2 should no longer be able to iterate into parent.
@@ -322,7 +322,7 @@ func TestPostCapBasicDataAccess(t *testing.T) {
 	}
 	// Now, merge it again, just for fun. It should now error, since a3
 	// is a disk layer
-	if err := snaps.Cap(common.HexToHash("0xa3"), 0); err == nil {
+	if err := snaps.Cap(common.HexToHash("0xa3"), 0, false); err == nil {
 		t.Error("expected error capping the disk layer, got none")
 	}
 }
@@ -354,11 +354,24 @@ func TestForceSnapRootCaps(t *testing.T) {
 		layers: map[common.Hash]snapshot{
 			base.root: base,
 		},
-		baseTime: time.Now(),
 		config: Config{
-			EnableSnapRootInterval: true,
-			SnapRootThreshold:      300,
+			SnapRootCommitThreshold: 10,
 		},
+	}
+
+	// validate compareThreshold method when disabled
+	if compare := snaps.CompareThreshold(100); compare {
+		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: false", compare)
+	}
+
+	// validate compareThreshold method when enabled
+	snaps.config.AllowForceUpdate = true
+	if compare := snaps.CompareThreshold(5); compare {
+		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: false", compare)
+	}
+
+	if compare := snaps.CompareThreshold(20); !compare {
+		t.Errorf("Incorrect CompareThreshold return - actual: %t, expected: true", compare)
 	}
 
 	// adding layers to the tree more than 128
@@ -374,7 +387,7 @@ func TestForceSnapRootCaps(t *testing.T) {
 	}
 
 	// Now capping without time threshold reached
-	if err := snaps.Cap(head, 128); err != nil {
+	if err := snaps.Cap(head, 128, false); err != nil {
 		t.Error("Error while capping layers", err)
 	}
 
@@ -390,12 +403,8 @@ func TestForceSnapRootCaps(t *testing.T) {
 		t.Errorf("Unexpected number of layers after flatten - count: %d, expected: 130", newLayers)
 	}
 
-	// Setting baseTime 10 min behind to trigger forceSnapshot
-	snaps.baseTime = time.Now().Add(time.Duration(-10) * time.Minute)
-
-	// Check if forceSnapshot disabled, time threshold should not trigger snapshot
-	snaps.config.EnableSnapRootInterval = false
-	if err := snaps.Cap(head, 128); err != nil {
+	// Check if forceSnapshot disabled, disk root should not update
+	if err := snaps.Cap(head, 128, false); err != nil {
 		t.Error("Error while capping layers", err)
 	}
 
@@ -405,9 +414,8 @@ func TestForceSnapRootCaps(t *testing.T) {
 		t.Errorf("Disk root should not have updated at this point - actual: %s, expected: %s", firstDiskRoot, base.root)
 	}
 
-	// Re-enable forceSnapshot, time threshold should trigger snapshot
-	snaps.config.EnableSnapRootInterval = true
-	if err := snaps.Cap(head, 128); err != nil {
+	// Re-enable forceSnapshot, disk root should update now
+	if err := snaps.Cap(head, 128, true); err != nil {
 		t.Error("Error while capping layers", err)
 	}
 
@@ -459,7 +467,7 @@ func TestSnaphots(t *testing.T) {
 		head = makeRoot(uint64(i + 2))
 		snaps.Update(head, last, nil, setAccount(fmt.Sprintf("%d", i+2)), nil)
 		last = head
-		snaps.Cap(head, 128) // 130 layers (128 diffs + 1 accumulator + 1 disk)
+		snaps.Cap(head, 128, false) // 130 layers (128 diffs + 1 accumulator + 1 disk)
 	}
 	var cases = []struct {
 		headRoot     common.Hash
@@ -494,7 +502,7 @@ func TestSnaphots(t *testing.T) {
 	defer func(memcap uint64) { aggregatorMemoryLimit = memcap }(aggregatorMemoryLimit)
 	aggregatorMemoryLimit = 0
 
-	snaps.Cap(head, 128) // 129 (128 diffs + 1 overflown accumulator + 1 disk)
+	snaps.Cap(head, 128, false) // 129 (128 diffs + 1 overflown accumulator + 1 disk)
 
 	cases = []struct {
 		headRoot     common.Hash
@@ -573,7 +581,7 @@ func TestReadStateDuringFlattening(t *testing.T) {
 		}
 	}
 	// Cap the snap tree, which will mark the bottom-most layer as stale.
-	snaps.Cap(common.HexToHash("0xa3"), 1)
+	snaps.Cap(common.HexToHash("0xa3"), 1, false)
 	select {
 	case account := <-result:
 		if account == nil {

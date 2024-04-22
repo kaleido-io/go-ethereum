@@ -76,8 +76,8 @@ var (
 	bloomAccountHasherOffset  = 0
 	bloomStorageHasherOffset  = 0
 
-	// A forcing time duration of 10 minutes after which to force a snapshotRoot update
-	defaultSnapRootInterval = 600
+	// Count for number of commits before fore disk root update
+	defaultSnapRootCommitThreshold = 100
 )
 
 func init() {
