@@ -168,7 +168,7 @@ type Config struct {
 	SnapshotCache           int
 	Preimages               bool
 	AllowForceUpdate        bool
-	SnapRootCommitThreshold int
+	CommitThreshold         int
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int

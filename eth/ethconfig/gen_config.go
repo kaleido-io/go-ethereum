@@ -49,7 +49,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		SnapshotCache           int
 		Preimages               bool
 		AllowForceUpdate        bool
-		SnapRootCommitThreshold int
+		CommitThreshold         int
 		FilterLogCacheSize      int
 		Miner                   miner.Config
 		Ethash                  ethash.Config
@@ -96,7 +96,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.SnapshotCache = c.SnapshotCache
 	enc.Preimages = c.Preimages
 	enc.AllowForceUpdate = c.AllowForceUpdate
-	enc.SnapRootCommitThreshold = c.SnapRootCommitThreshold
+	enc.CommitThreshold = c.CommitThreshold
 	enc.FilterLogCacheSize = c.FilterLogCacheSize
 	enc.Miner = c.Miner
 	enc.Ethash = c.Ethash
@@ -147,7 +147,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		SnapshotCache           *int
 		Preimages               *bool
 		AllowForceUpdate        *bool
-		SnapRootCommitThreshold *int
+		CommitThreshold         *int
 		FilterLogCacheSize      *int
 		Miner                   *miner.Config
 		Ethash                  *ethash.Config
@@ -259,8 +259,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.AllowForceUpdate != nil {
 		c.AllowForceUpdate = *dec.AllowForceUpdate
 	}
-	if dec.SnapRootCommitThreshold != nil {
-		c.SnapRootCommitThreshold = *dec.SnapRootCommitThreshold
+	if dec.CommitThreshold != nil {
+		c.CommitThreshold = *dec.CommitThreshold
 	}
 	if dec.FilterLogCacheSize != nil {
 		c.FilterLogCacheSize = *dec.FilterLogCacheSize

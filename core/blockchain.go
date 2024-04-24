@@ -137,22 +137,22 @@ type CacheConfig struct {
 	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 
-	AllowForceUpdate        bool // Enable to force snapshots based on commit counts
-	SnapRootCommitThreshold int  // Number of commits to force a root snapshot
-	SnapshotNoBuild         bool // Whether the background generation is allowed
-	SnapshotWait            bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	AllowForceUpdate bool // Enable to force snapshots based on commit counts
+	CommitThreshold  int  // Number of commits to force a root snapshot
+	SnapshotNoBuild  bool // Whether the background generation is allowed
+	SnapshotWait     bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
 
 // defaultCacheConfig are the default caching values if none are specified by the
 // user (also used during testing).
 var defaultCacheConfig = &CacheConfig{
-	TrieCleanLimit:          256,
-	TrieDirtyLimit:          256,
-	TrieTimeLimit:           5 * time.Minute,
-	SnapshotLimit:           256,
-	SnapshotWait:            true,
-	AllowForceUpdate:        false,
-	SnapRootCommitThreshold: 100,
+	TrieCleanLimit:   256,
+	TrieDirtyLimit:   256,
+	TrieTimeLimit:    5 * time.Minute,
+	SnapshotLimit:    256,
+	SnapshotWait:     true,
+	AllowForceUpdate: false,
+	CommitThreshold:  128,
 }
 
 // BlockChain represents the canonical chain given a database with a genesis
@@ -401,12 +401,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			recover = true
 		}
 		snapconfig := snapshot.Config{
-			CacheSize:               bc.cacheConfig.SnapshotLimit,
-			Recovery:                recover,
-			NoBuild:                 bc.cacheConfig.SnapshotNoBuild,
-			AsyncBuild:              !bc.cacheConfig.SnapshotWait,
-			AllowForceUpdate:        bc.cacheConfig.AllowForceUpdate,
-			SnapRootCommitThreshold: bc.cacheConfig.SnapRootCommitThreshold,
+			CacheSize:        bc.cacheConfig.SnapshotLimit,
+			Recovery:         recover,
+			NoBuild:          bc.cacheConfig.SnapshotNoBuild,
+			AsyncBuild:       !bc.cacheConfig.SnapshotWait,
+			AllowForceUpdate: bc.cacheConfig.AllowForceUpdate,
+			CommitThreshold:  bc.cacheConfig.CommitThreshold,
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root)
 	}

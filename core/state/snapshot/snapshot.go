@@ -149,12 +149,24 @@ type snapshot interface {
 
 // Config includes the configurations for snapshots.
 type Config struct {
-	CacheSize               int  // Megabytes permitted to use for read caches
-	Recovery                bool // Indicator that the snapshots is in the recovery mode
-	NoBuild                 bool // Indicator that the snapshots generation is disallowed
-	AsyncBuild              bool // The snapshot generation is allowed to be constructed asynchronously
-	AllowForceUpdate        bool // Enable forcing snap root generation on a commit count
-	SnapRootCommitThreshold int  // Number of commit after which to attempt snap root update
+	CacheSize        int  // Megabytes permitted to use for read caches
+	Recovery         bool // Indicator that the snapshots is in the recovery mode
+	NoBuild          bool // Indicator that the snapshots generation is disallowed
+	AsyncBuild       bool // The snapshot generation is allowed to be constructed asynchronously
+	AllowForceUpdate bool // Enable forcing snap root generation on a commit count
+	CommitThreshold  int  // Number of commit after which to attempt snap root update
+}
+
+// sanitize checks the provided user configurations and changes anything that's
+// unreasonable or unworkable.
+func (c *Config) sanitize() Config {
+	conf := *c
+
+	if conf.CommitThreshold == 0 {
+		log.Warn("Sanitizing invalid commit threshold to default", "defaultThreshold", defaultCommitThreshold)
+		conf.CommitThreshold = defaultCommitThreshold
+	}
+	return conf
 }
 
 // Tree is an Ethereum state snapshot tree. It consists of one persistent base
@@ -194,18 +206,15 @@ type Tree struct {
 //   - otherwise, the entire snapshot is considered invalid and will be recreated on
 //     a background thread.
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash) (*Tree, error) {
+	// apply default to config and fix invalid values
+	conf := config.sanitize()
+
 	// Create a new, empty snapshot tree
 	snap := &Tree{
-		config: config,
+		config: conf,
 		diskdb: diskdb,
 		triedb: triedb,
 		layers: make(map[common.Hash]snapshot),
-	}
-
-	// Setting the default interval value if it is enabled and not set
-	// Important to set it to at least default value if enabled to avoid update snap root very aggressively
-	if config.AllowForceUpdate && (config.SnapRootCommitThreshold == 0) {
-		snap.config.SnapRootCommitThreshold = defaultSnapRootCommitThreshold
 	}
 
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
@@ -501,7 +510,7 @@ func (t *Tree) cap(diff *diffLayer, layers int, force bool) *diskLayer {
 			t.onFlatten()
 		}
 		diff.parent = flattened
-		log.Debug("Validating snapRoot update", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "commitThreshold", t.config.SnapRootCommitThreshold, "forceSnapshot", force)
+		log.Debug("Validating snapRoot update", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "commitThreshold", t.config.CommitThreshold, "forceSnapshot", force)
 		if (flattened.memory < aggregatorMemoryLimit) && !force {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
@@ -867,8 +876,8 @@ func (t *Tree) CompareThreshold() bool {
 	if !t.config.AllowForceUpdate {
 		return false
 	}
-	log.Debug("Commit counters", "counter", t.commitCounter, "threshold", t.config.SnapRootCommitThreshold)
-	if t.commitCounter > t.config.SnapRootCommitThreshold {
+	log.Debug("Snapshot Commit counters", "counter", t.commitCounter, "threshold", t.config.CommitThreshold)
+	if t.commitCounter > t.config.CommitThreshold {
 		t.commitCounter = 0
 		return true
 	}

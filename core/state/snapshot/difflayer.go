@@ -77,7 +77,7 @@ var (
 	bloomStorageHasherOffset  = 0
 
 	// Count for number of commits before fore disk root update
-	defaultSnapRootCommitThreshold = 100
+	defaultCommitThreshold = 128
 )
 
 func init() {

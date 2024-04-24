@@ -355,8 +355,8 @@ func TestForceSnapRootCaps(t *testing.T) {
 			base.root: base,
 		},
 		config: Config{
-			AllowForceUpdate:        true,
-			SnapRootCommitThreshold: 10,
+			AllowForceUpdate: true,
+			CommitThreshold:  10,
 		},
 	}
 
