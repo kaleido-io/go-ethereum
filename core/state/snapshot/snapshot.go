@@ -153,8 +153,8 @@ type Config struct {
 	Recovery         bool // Indicator that the snapshots is in the recovery mode
 	NoBuild          bool // Indicator that the snapshots generation is disallowed
 	AsyncBuild       bool // The snapshot generation is allowed to be constructed asynchronously
-	AllowForceUpdate bool // Enable forcing snap root generation on a commit count
-	CommitThreshold  int  // Number of commit after which to attempt snap root update
+	AllowForceUpdate bool // Enable to force root snapshots based on the configured commits threshold
+	CommitThreshold  int  // Threshold of commits to force a root snapshot update
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -163,7 +163,7 @@ func (c *Config) sanitize() Config {
 	conf := *c
 
 	if conf.CommitThreshold == 0 {
-		log.Warn("Sanitizing invalid commit threshold to default", "defaultThreshold", defaultCommitThreshold)
+		log.Warn("Sanitizing commit threshold", "provided", conf.CommitThreshold, "updated", defaultCommitThreshold)
 		conf.CommitThreshold = defaultCommitThreshold
 	}
 	return conf
@@ -206,12 +206,10 @@ type Tree struct {
 //   - otherwise, the entire snapshot is considered invalid and will be recreated on
 //     a background thread.
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash) (*Tree, error) {
-	// apply default to config and fix invalid values
-	conf := config.sanitize()
 
 	// Create a new, empty snapshot tree
 	snap := &Tree{
-		config: conf,
+		config: config.sanitize(),
 		diskdb: diskdb,
 		triedb: triedb,
 		layers: make(map[common.Hash]snapshot),

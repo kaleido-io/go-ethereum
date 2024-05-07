@@ -137,8 +137,8 @@ type CacheConfig struct {
 	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 
-	AllowForceUpdate bool // Enable to force snapshots based on commit counts
-	CommitThreshold  int  // Number of commits to force a root snapshot
+	AllowForceUpdate bool // Enable to force root snapshots based on the configured commits threshold
+	CommitThreshold  int  // Threshold of commits to force a root snapshot update
 	SnapshotNoBuild  bool // Whether the background generation is allowed
 	SnapshotWait     bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
@@ -1374,7 +1374,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	current := block.NumberU64()
 	// Flush limits are not considered for the first TriesInMemory blocks.
-	log.Debug("Trie in memory", "current", current, "inMemory", TriesInMemory)
+	log.Trace("Trie in memory", "current", current, "inMemory", TriesInMemory)
 	if current <= TriesInMemory {
 		return nil
 	}
@@ -1390,7 +1390,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Find the next state trie we need to commit
 	chosen := current - TriesInMemory
 	flushInterval := time.Duration(bc.flushInterval.Load())
-	log.Debug("Flush Interval", "proc", bc.gcproc, "interval", flushInterval, "block", chosen, "flushing", (bc.gcproc > flushInterval))
+	log.Trace("Flush Interval", "proc", bc.gcproc, "interval", flushInterval, "block", chosen, "flushing", (bc.gcproc > flushInterval))
 	// If we exceeded time allowance, flush an entire trie to disk
 	if bc.gcproc > flushInterval {
 		// If the header is missing (canonical chain behind), we're reorging a low
