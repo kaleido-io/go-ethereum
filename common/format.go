@@ -80,3 +80,10 @@ func (t PrettyAge) String() string {
 	}
 	return result
 }
+
+type PrettySeconds int
+
+// Returns int to formatted seconds
+func (t PrettySeconds) String() string {
+	return fmt.Sprintf("%ds", t)
+}

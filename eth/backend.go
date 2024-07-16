@@ -191,6 +191,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieTimeLimit:       config.TrieTimeout,
 			SnapshotLimit:       config.SnapshotCache,
 			Preimages:           config.Preimages,
+			AllowForceUpdate:    config.AllowForceUpdate,
+			CommitThreshold:     config.CommitThreshold,
 		}
 	)
 	// Override the chain config with provided settings.

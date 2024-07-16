@@ -137,18 +137,22 @@ type CacheConfig struct {
 	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 
-	SnapshotNoBuild bool // Whether the background generation is allowed
-	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
+	AllowForceUpdate bool // Enable to force root snapshots based on the configured commits threshold
+	CommitThreshold  int  // Threshold of commits to force a root snapshot update
+	SnapshotNoBuild  bool // Whether the background generation is allowed
+	SnapshotWait     bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 }
 
 // defaultCacheConfig are the default caching values if none are specified by the
 // user (also used during testing).
 var defaultCacheConfig = &CacheConfig{
-	TrieCleanLimit: 256,
-	TrieDirtyLimit: 256,
-	TrieTimeLimit:  5 * time.Minute,
-	SnapshotLimit:  256,
-	SnapshotWait:   true,
+	TrieCleanLimit:   256,
+	TrieDirtyLimit:   256,
+	TrieTimeLimit:    5 * time.Minute,
+	SnapshotLimit:    256,
+	SnapshotWait:     true,
+	AllowForceUpdate: false,
+	CommitThreshold:  128,
 }
 
 // BlockChain represents the canonical chain given a database with a genesis
@@ -397,10 +401,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			recover = true
 		}
 		snapconfig := snapshot.Config{
-			CacheSize:  bc.cacheConfig.SnapshotLimit,
-			Recovery:   recover,
-			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
-			AsyncBuild: !bc.cacheConfig.SnapshotWait,
+			CacheSize:        bc.cacheConfig.SnapshotLimit,
+			Recovery:         recover,
+			NoBuild:          bc.cacheConfig.SnapshotNoBuild,
+			AsyncBuild:       !bc.cacheConfig.SnapshotWait,
+			AllowForceUpdate: bc.cacheConfig.AllowForceUpdate,
+			CommitThreshold:  bc.cacheConfig.CommitThreshold,
 		}
 		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root)
 	}
@@ -623,7 +629,6 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// current freezer limit to start nuking id underflown
 	pivot := rawdb.ReadLastPivotNumber(bc.db)
 	frozen, _ := bc.db.Ancients()
-
 	updateFn := func(db ethdb.KeyValueWriter, header *types.Header) (*types.Header, bool) {
 		// Rewind the blockchain, ensuring we don't end up with a stateless head
 		// block. Note, depth equality is permitted to allow using SetHead as a
@@ -1358,6 +1363,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err != nil {
 		return err
 	}
+	log.Debug("Committed State", "root", root)
 	// If we're running an archive node, always flush
 	if bc.cacheConfig.TrieDirtyDisabled {
 		return bc.triedb.Commit(root, false)
@@ -1368,6 +1374,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	current := block.NumberU64()
 	// Flush limits are not considered for the first TriesInMemory blocks.
+	log.Trace("Trie in memory", "current", current, "inMemory", TriesInMemory)
 	if current <= TriesInMemory {
 		return nil
 	}
@@ -1376,12 +1383,14 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		nodes, imgs = bc.triedb.Size()
 		limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 	)
+
 	if nodes > limit || imgs > 4*1024*1024 {
 		bc.triedb.Cap(limit - ethdb.IdealBatchSize)
 	}
 	// Find the next state trie we need to commit
 	chosen := current - TriesInMemory
 	flushInterval := time.Duration(bc.flushInterval.Load())
+	log.Trace("Flush Interval", "proc", bc.gcproc, "interval", flushInterval, "block", chosen, "flushing", (bc.gcproc > flushInterval))
 	// If we exceeded time allowance, flush an entire trie to disk
 	if bc.gcproc > flushInterval {
 		// If the header is missing (canonical chain behind), we're reorging a low
@@ -1401,6 +1410,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			bc.gcproc = 0
 		}
 	}
+
 	// Garbage collect anything below our required write retention
 	for !bc.triegc.Empty() {
 		root, number := bc.triegc.Pop()

@@ -1808,7 +1808,7 @@ func testRepair(t *testing.T, tt *rewindTest, snapshots bool) {
 	if tt.commitBlock > 0 {
 		chain.stateCache.TrieDB().Commit(canonblocks[tt.commitBlock-1].Root(), false)
 		if snapshots {
-			if err := chain.snaps.Cap(canonblocks[tt.commitBlock-1].Root(), 0); err != nil {
+			if err := chain.snaps.Cap(canonblocks[tt.commitBlock-1].Root(), 0, false); err != nil {
 				t.Fatalf("Failed to flatten snapshots: %v", err)
 			}
 		}
@@ -1935,7 +1935,7 @@ func TestIssue23496(t *testing.T) {
 	if _, err := chain.InsertChain(blocks[1:2]); err != nil {
 		t.Fatalf("Failed to import canonical chain start: %v", err)
 	}
-	if err := chain.snaps.Cap(blocks[1].Root(), 0); err != nil {
+	if err := chain.snaps.Cap(blocks[1].Root(), 0, false); err != nil {
 		t.Fatalf("Failed to flatten snapshots: %v", err)
 	}
 

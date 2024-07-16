@@ -149,10 +149,24 @@ type snapshot interface {
 
 // Config includes the configurations for snapshots.
 type Config struct {
-	CacheSize  int  // Megabytes permitted to use for read caches
-	Recovery   bool // Indicator that the snapshots is in the recovery mode
-	NoBuild    bool // Indicator that the snapshots generation is disallowed
-	AsyncBuild bool // The snapshot generation is allowed to be constructed asynchronously
+	CacheSize        int  // Megabytes permitted to use for read caches
+	Recovery         bool // Indicator that the snapshots is in the recovery mode
+	NoBuild          bool // Indicator that the snapshots generation is disallowed
+	AsyncBuild       bool // The snapshot generation is allowed to be constructed asynchronously
+	AllowForceUpdate bool // Enable to force root snapshots based on the configured commits threshold
+	CommitThreshold  int  // Threshold of commits to force a root snapshot update
+}
+
+// sanitize checks the provided user configurations and changes anything that's
+// unreasonable or unworkable.
+func (c *Config) sanitize() Config {
+	conf := *c
+
+	if conf.CommitThreshold == 0 {
+		log.Warn("Sanitizing commit threshold", "provided", conf.CommitThreshold, "updated", defaultCommitThreshold)
+		conf.CommitThreshold = defaultCommitThreshold
+	}
+	return conf
 }
 
 // Tree is an Ethereum state snapshot tree. It consists of one persistent base
@@ -165,12 +179,12 @@ type Config struct {
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
 // cheap iteration of the account/storage tries for sync aid.
 type Tree struct {
-	config Config                   // Snapshots configurations
-	diskdb ethdb.KeyValueStore      // Persistent database to store the snapshot
-	triedb *trie.Database           // In-memory cache to access the trie through
-	layers map[common.Hash]snapshot // Collection of all known layers
-	lock   sync.RWMutex
-
+	config        Config                   // Snapshots configurations
+	diskdb        ethdb.KeyValueStore      // Persistent database to store the snapshot
+	triedb        *trie.Database           // In-memory cache to access the trie through
+	layers        map[common.Hash]snapshot // Collection of all known layers
+	lock          sync.RWMutex
+	commitCounter int // Counter for number of commits
 	// Test hooks
 	onFlatten func() // Hook invoked when the bottom most diff layers are flattened
 }
@@ -192,13 +206,15 @@ type Tree struct {
 //   - otherwise, the entire snapshot is considered invalid and will be recreated on
 //     a background thread.
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash) (*Tree, error) {
+
 	// Create a new, empty snapshot tree
 	snap := &Tree{
-		config: config,
+		config: config.sanitize(),
 		diskdb: diskdb,
 		triedb: triedb,
 		layers: make(map[common.Hash]snapshot),
 	}
+
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
 	head, disabled, err := loadSnapshot(diskdb, triedb, root, config.CacheSize, config.Recovery, config.NoBuild)
 	if disabled {
@@ -373,7 +389,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, destructs m
 // which may or may not overflow and cascade to disk. Since this last layer's
 // survival is only known *after* capping, we need to omit it from the count if
 // we want to ensure that *at least* the requested number of diff layers remain.
-func (t *Tree) Cap(root common.Hash, layers int) error {
+func (t *Tree) Cap(root common.Hash, layers int, force bool) error {
 	// Retrieve the head snapshot to cap from
 	snap := t.Snapshot(root)
 	if snap == nil {
@@ -407,7 +423,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 		t.layers = map[common.Hash]snapshot{base.root: base}
 		return nil
 	}
-	persisted := t.cap(diff, layers)
+	persisted := t.cap(diff, layers, force)
 
 	// Remove any layer that is stale or links into a stale layer
 	children := make(map[common.Hash][]common.Hash)
@@ -457,7 +473,7 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 // which may or may not overflow and cascade to disk. Since this last layer's
 // survival is only known *after* capping, we need to omit it from the count if
 // we want to ensure that *at least* the requested number of diff layers remain.
-func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
+func (t *Tree) cap(diff *diffLayer, layers int, force bool) *diskLayer {
 	// Dive until we run out of layers or reach the persistent database
 	for i := 0; i < layers-1; i++ {
 		// If we still have diff layers below, continue down
@@ -465,6 +481,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			diff = parent
 		} else {
 			// Diff stack too shallow, return without modifications
+			log.Debug("Diff layer too shallow. No Modification", "count", i, "layers", layers)
 			return nil
 		}
 	}
@@ -491,11 +508,13 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			t.onFlatten()
 		}
 		diff.parent = flattened
-		if flattened.memory < aggregatorMemoryLimit {
+		log.Debug("Validating snapRoot update", "limit", aggregatorMemoryLimit, "currentMemory", flattened.memory, "commitThreshold", t.config.CommitThreshold, "forceSnapshot", force)
+		if (flattened.memory < aggregatorMemoryLimit) && !force {
 			// Accumulator layer is smaller than the limit, so we can abort, unless
 			// there's a snapshot being generated currently. In that case, the trie
 			// will move from underneath the generator so we **must** merge all the
 			// partial data down into the snapshot and restart the generation.
+			// or time interval has been crossed to force a snapshot
 			if flattened.parent.(*diskLayer).genAbort == nil {
 				return nil
 			}
@@ -505,11 +524,9 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 	}
 	// If the bottom-most layer is larger than our memory cap, persist to disk
 	bottom := diff.parent.(*diffLayer)
-
 	bottom.lock.RLock()
 	base := diffToDisk(bottom)
 	bottom.lock.RUnlock()
-
 	t.layers[base.root] = base
 	diff.parent = base
 	return base
@@ -633,7 +650,7 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write leftover snapshot", "err", err)
 	}
-	log.Debug("Journalled disk layer", "root", bottom.root, "complete", base.genMarker == nil)
+	log.Debug("Snapshot Root generation complete", "newSnapRoot", bottom.root)
 	res := &diskLayer{
 		root:       bottom.root,
 		cache:      base.cache,
@@ -850,4 +867,20 @@ func (t *Tree) DiskRoot() common.Hash {
 	defer t.lock.Unlock()
 
 	return t.diskRoot()
+}
+
+// Checks the config to compare if count of commits is above threshold
+func (t *Tree) CompareThreshold() bool {
+	if !t.config.AllowForceUpdate {
+		return false
+	}
+	log.Debug("Snapshot Commit counters", "counter", t.commitCounter, "threshold", t.config.CommitThreshold)
+	if t.commitCounter > t.config.CommitThreshold {
+		t.commitCounter = 0
+		return true
+	}
+
+	t.commitCounter++
+
+	return false
 }
